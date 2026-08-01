@@ -11,7 +11,13 @@ export const customerService = {
       .order('name', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((c: any) => ({
+      ...c,
+      borrow_limit: c.credit_limit,
+      current_debt: c.balance,
+      store_credit: Math.max(0, -c.balance),
+    }));
   },
 
   async getCustomerById(id: string): Promise<Customer | null> {
@@ -23,40 +29,64 @@ export const customerService = {
       .single();
 
     if (error) return null;
-    return data;
+    
+    return {
+      ...data,
+      borrow_limit: data.credit_limit,
+      current_debt: data.balance,
+      store_credit: Math.max(0, -data.balance),
+    };
   },
 
   async createCustomer(customer: Partial<Customer>): Promise<Customer> {
     const supabase = createClient();
+    const payload = {
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      credit_limit: customer.credit_limit ?? customer.borrow_limit ?? 5000,
+      balance: customer.balance ?? customer.current_debt ?? 0,
+      supermarket_id: customer.supermarket_id,
+    };
+
     const { data, error } = await supabase
       .from('customers')
-      .insert([
-        {
-          borrow_limit: 5000,
-          current_debt: 0,
-          store_credit: 0,
-          is_active: true,
-          ...customer,
-        },
-      ])
+      .insert([payload])
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+      ...data,
+      borrow_limit: data.credit_limit,
+      current_debt: data.balance,
+      store_credit: Math.max(0, -data.balance),
+    };
   },
 
   async updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
     const supabase = createClient();
+    const payload: any = { ...updates, updated_at: new Date().toISOString() };
+
+    if (updates.borrow_limit !== undefined) payload.credit_limit = updates.borrow_limit;
+    if (updates.current_debt !== undefined) payload.balance = updates.current_debt;
+
     const { data, error } = await supabase
       .from('customers')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+      ...data,
+      borrow_limit: data.credit_limit,
+      current_debt: data.balance,
+      store_credit: Math.max(0, -data.balance),
+    };
   },
 
   async checkBorrowLimit(customerId: string, newBorrowAmount: number): Promise<{ allowed: boolean; message?: string; customer?: Customer }> {
@@ -65,11 +95,14 @@ export const customerService = {
       return { allowed: false, message: 'Customer profile not found' };
     }
 
-    const projectedDebt = customer.current_debt + newBorrowAmount;
-    if (projectedDebt > customer.borrow_limit) {
+    const currentDebt = customer.balance ?? customer.current_debt ?? 0;
+    const limit = customer.credit_limit ?? customer.borrow_limit ?? 5000;
+    const projectedDebt = currentDebt + newBorrowAmount;
+
+    if (projectedDebt > limit) {
       return {
         allowed: false,
-        message: `Borrow limit reached! Maximum allowed credit is KES ${customer.borrow_limit.toFixed(2)}. Current debt: KES ${customer.current_debt.toFixed(2)}. Transaction of KES ${newBorrowAmount.toFixed(2)} exceeds limit by KES ${(projectedDebt - customer.borrow_limit).toFixed(2)}.`,
+        message: `Borrow limit reached! Maximum credit allowed is KES ${limit.toFixed(2)}. Current balance: KES ${currentDebt.toFixed(2)}.`,
         customer,
       };
     }
@@ -80,57 +113,31 @@ export const customerService = {
   async recordRepayment(customerId: string, amount: number, notes?: string): Promise<Customer> {
     const supabase = createClient();
 
-    // 1. Fetch fresh customer record to prevent race conditions
     const { data: customer, error: fetchErr } = await supabase
       .from('customers')
       .select('*')
       .eq('id', customerId)
       .single();
 
-    if (fetchErr || !customer) throw fetchErr || new Error('Customer not found');
+    if (fetchErr || !customer) throw fetchErr || new Error('Customer profile not found');
 
-    const currentDebt = customer.current_debt || 0;
-    const currentCredit = customer.store_credit || 0;
-
-    let newDebt = 0;
-    let newCredit = currentCredit;
-
-    if (amount <= currentDebt) {
-      newDebt = currentDebt - amount;
-    } else {
-      // Overpayment: clear debt and add excess to store credit balance
-      const overpayment = amount - currentDebt;
-      newDebt = 0;
-      newCredit += overpayment;
-    }
-
-    // 2. Update customer record
-    const { data: updatedCustomer, error: updateErr } = await supabase
-      .from('customers')
-      .update({
-        current_debt: newDebt,
-        store_credit: newCredit,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', customerId)
-      .select()
-      .single();
-
-    if (updateErr) throw updateErr;
-
-    // 3. Log detailed credit transaction log
-    await supabase.from('customer_credits').insert([
+    // Insert payment transaction log in customer_credits
+    // Trigger update_customer_credit_balance will automatically update customers.balance!
+    const { error: creditErr } = await supabase.from('customer_credits').insert([
       {
         supermarket_id: customer.supermarket_id,
+        branch_id: customer.branch_id,
         customer_id: customerId,
-        type: 'repayment',
+        type: 'payment',
         amount,
-        balance_after: newDebt,
-        notes: notes || `Repayment received (Debt: KES ${newDebt.toFixed(2)}, Credit: KES ${newCredit.toFixed(2)})`,
+        description: notes || `Repayment received: KES ${amount.toFixed(2)}`,
       },
     ]);
 
-    return updatedCustomer;
+    if (creditErr) throw creditErr;
+
+    const updated = await this.getCustomerById(customerId);
+    return updated!;
   },
 
   async getCustomerLogs(customerId: string): Promise<CustomerCreditLog[]> {
@@ -142,7 +149,12 @@ export const customerService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((log: any) => ({
+      ...log,
+      notes: log.description,
+      balance_after: log.amount,
+    }));
   },
 
   async getCustomerPurchaseHistory(customerId: string): Promise<Sale[]> {
@@ -154,6 +166,11 @@ export const customerService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((s: any) => ({
+      ...s,
+      invoice_number: `INV-${s.id.slice(0, 8)}`,
+      net_amount: s.total_amount,
+    }));
   },
 };

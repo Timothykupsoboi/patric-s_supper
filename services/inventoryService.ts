@@ -5,43 +5,34 @@ export const inventoryService = {
   async adjustStock(
     productId: string,
     quantity: number,
-    type: 'sale' | 'purchase' | 'adjustment' | 'return' | 'damage' | 'transfer',
+    type: 'in' | 'out' | 'adjustment_add' | 'adjustment_sub' | 'transfer_in' | 'transfer_out' | 'damaged' | 'expired',
     reason: string,
     userId?: string,
     supermarketId?: string
   ): Promise<void> {
     const supabase = createClient();
 
-    // 1. Fetch existing product stock
     const { data: product, error: fetchErr } = await supabase
       .from('products')
-      .select('stock_quantity, supermarket_id')
+      .select('buying_price, supermarket_id')
       .eq('id', productId)
       .single();
 
     if (fetchErr || !product) throw fetchErr || new Error('Product not found');
 
-    const newStock = Math.max(0, product.stock_quantity + quantity);
-
-    // 2. Update product stock quantity
-    const { error: updateErr } = await supabase
-      .from('products')
-      .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
-      .eq('id', productId);
-
-    if (updateErr) throw updateErr;
-
-    // 3. Insert detailed stock transaction record
-    await supabase.from('stock_transactions').insert([
+    // Trigger trigger_stock_transaction_reconcile in my-supabase-migration automatically updates current_stock!
+    const { error: txErr } = await supabase.from('stock_transactions').insert([
       {
         supermarket_id: supermarketId || product.supermarket_id,
         product_id: productId,
         type,
-        quantity,
-        reason,
-        created_by: userId,
+        quantity: Math.abs(quantity),
+        unit_cost: product.buying_price || 0,
+        notes: reason,
       },
     ]);
+
+    if (txErr) throw txErr;
   },
 
   async getLowStockProducts(): Promise<Product[]> {
@@ -50,17 +41,24 @@ export const inventoryService = {
       .from('products')
       .select('*, category:categories(*)')
       .eq('deleted', false)
-      .order('stock_quantity', { ascending: true });
+      .order('current_stock', { ascending: true });
 
     if (error) throw error;
-    return (data || []).filter((p: Product) => p.stock_quantity <= (p.reorder_level || 5));
+
+    return (data || [])
+      .filter((p: any) => p.current_stock <= (p.minimum_stock || 5))
+      .map((p: any) => ({
+        ...p,
+        cost_price: p.buying_price,
+        stock_quantity: p.current_stock,
+        reorder_level: p.minimum_stock,
+      }));
   },
 
   async getNearExpiryProducts(daysThreshold: number = 30): Promise<Product[]> {
     const supabase = createClient();
-    const today = new Date();
     const thresholdDate = new Date();
-    thresholdDate.setDate(today.getDate() + daysThreshold);
+    thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
 
     const { data, error } = await supabase
       .from('products')
@@ -71,7 +69,13 @@ export const inventoryService = {
       .order('expiry_date', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+
+    return (data || []).map((p: any) => ({
+      ...p,
+      cost_price: p.buying_price,
+      stock_quantity: p.current_stock,
+      reorder_level: p.minimum_stock,
+    }));
   },
 
   async getStockTransactions(limit: number = 50): Promise<StockTransaction[]> {
@@ -83,37 +87,62 @@ export const inventoryService = {
       .limit(limit);
 
     if (error) throw error;
-    return data || [];
+
+    return (data || []).map((tx: any) => ({
+      ...tx,
+      reason: tx.notes,
+      product: tx.product ? {
+        ...tx.product,
+        cost_price: tx.product.buying_price,
+        stock_quantity: tx.product.current_stock,
+      } : undefined,
+    }));
   },
 
   async getPurchaseOrders(): Promise<PurchaseOrder[]> {
     const supabase = createClient();
     const { data, error } = await supabase
-      .from('purchase_orders')
+      .from('purchases')
       .select('*, supplier:suppliers(*)')
+      .eq('deleted', false)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+
+    return (data || []).map((p: any) => ({
+      ...p,
+      order_number: `PO-${p.id.slice(0, 8)}`,
+    }));
   },
 
   async createPurchaseOrder(po: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
     const supabase = createClient();
-    const orderNumber = `PO-${Date.now().toString().slice(-6)}`;
     const { data, error } = await supabase
-      .from('purchase_orders')
-      .insert([{ order_number: orderNumber, status: 'draft', ...po }])
+      .from('purchases')
+      .insert([
+        {
+          supermarket_id: po.supermarket_id,
+          branch_id: po.branch_id,
+          supplier_id: po.supplier_id,
+          total_amount: po.total_amount || 0,
+          status: 'ordered',
+        },
+      ])
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+      ...data,
+      order_number: `PO-${data.id.slice(0, 8)}`,
+    };
   },
 
-  async updatePOStatus(poId: string, status: 'draft' | 'ordered' | 'received' | 'cancelled'): Promise<void> {
+  async updatePOStatus(poId: string, status: 'ordered' | 'received' | 'returned'): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase
-      .from('purchase_orders')
+      .from('purchases')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', poId);
 

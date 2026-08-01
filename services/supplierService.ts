@@ -11,19 +11,37 @@ export const supplierService = {
       .order('name', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((s: any) => ({
+      ...s,
+      is_active: true,
+    }));
   },
 
   async createSupplier(supplier: Partial<Supplier>): Promise<Supplier> {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('suppliers')
-      .insert([{ is_active: true, ...supplier }])
+      .insert([
+        {
+          supermarket_id: supplier.supermarket_id,
+          branch_id: supplier.branch_id,
+          name: supplier.name,
+          contact_person: supplier.contact_person,
+          phone: supplier.phone,
+          email: supplier.email,
+          outstanding_balance: supplier.outstanding_balance || 0,
+        },
+      ])
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+      ...data,
+      is_active: true,
+    };
   },
 
   async updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier> {
@@ -36,7 +54,11 @@ export const supplierService = {
       .single();
 
     if (error) throw error;
-    return data;
+
+    return {
+      ...data,
+      is_active: true,
+    };
   },
 
   async deleteSupplier(id: string): Promise<void> {

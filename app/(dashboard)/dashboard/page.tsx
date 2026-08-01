@@ -147,11 +147,11 @@ export default function DashboardPage() {
               recentSales.map((sale) => (
                 <div key={sale.id} className="py-3 flex justify-between items-center text-xs">
                   <div>
-                    <p className="font-extrabold text-slate-900">{sale.invoice_number}</p>
+                    <p className="font-extrabold text-slate-900">{sale.invoice_number || sale.id.slice(0, 8)}</p>
                     <p className="text-[10px] text-slate-400">{formatDateTime(sale.created_at)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-black text-slate-900">{formatCurrency(sale.net_amount)}</p>
+                    <p className="font-black text-slate-900">{formatCurrency(sale.net_amount ?? sale.total_amount ?? 0)}</p>
                     <Badge variant="success" className="uppercase text-[9px] mt-0.5">
                       {sale.payment_method}
                     </Badge>
@@ -182,9 +182,9 @@ export default function DashboardPage() {
                 <div key={prod.id} className="py-3 flex justify-between items-center text-xs">
                   <div>
                     <p className="font-extrabold text-slate-900">{prod.name}</p>
-                    <p className="text-[10px] text-slate-400">Reorder threshold: {prod.reorder_level}</p>
+                    <p className="text-[10px] text-slate-400">Reorder threshold: {prod.minimum_stock ?? prod.reorder_level ?? 5}</p>
                   </div>
-                  <Badge variant="danger">{prod.stock_quantity} Left</Badge>
+                  <Badge variant="danger">{prod.current_stock ?? prod.stock_quantity ?? 0} Left</Badge>
                 </div>
               ))
             )}

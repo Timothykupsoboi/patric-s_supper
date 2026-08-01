@@ -2,14 +2,13 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { saleService, FinancialReportMetrics } from '@/services/saleService';
-import { expenseService } from '@/services/expenseService';
+import { saleService } from '@/services/saleService';
 import { productService } from '@/services/productService';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Download, FileText, TrendingUp, DollarSign, PieChart as PieIcon, BarChart3, Tag, PackageCheck } from 'lucide-react';
+import { Download, DollarSign, PieChart as PieIcon, FileText, PackageCheck } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -18,7 +17,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
 } from 'recharts';
 
 export default function ReportsPage() {
@@ -51,13 +49,13 @@ export default function ReportsPage() {
   const exportSalesCSV = () => {
     const headers = ['Invoice Number', 'Date', 'Payment Method', 'Subtotal', 'Discount', 'Tax (16%)', 'Net Amount'];
     const rows = sales.map((s) => [
-      s.invoice_number,
+      s.invoice_number || s.id.slice(0, 8),
       new Date(s.created_at).toLocaleString(),
       s.payment_method,
       s.total_amount,
       s.discount_amount,
       s.tax_amount,
-      s.net_amount,
+      s.net_amount ?? s.total_amount ?? 0,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -94,15 +92,15 @@ export default function ReportsPage() {
   };
 
   const exportValuationCSV = () => {
-    const headers = ['Product Name', 'SKU', 'Stock Qty', 'Cost Price', 'Selling Price', 'Total Cost Valuation', 'Total Retail Valuation'];
+    const headers = ['Product Name', 'SKU', 'Stock Qty', 'Buying Price', 'Selling Price', 'Total Cost Valuation', 'Total Retail Valuation'];
     const rows = products.map((p) => [
       p.name,
       p.sku || '',
-      p.stock_quantity,
-      p.cost_price,
+      p.current_stock ?? p.stock_quantity ?? 0,
+      p.buying_price ?? p.cost_price ?? 0,
       p.selling_price,
-      p.cost_price * p.stock_quantity,
-      p.selling_price * p.stock_quantity,
+      (p.buying_price ?? p.cost_price ?? 0) * (p.current_stock ?? p.stock_quantity ?? 0),
+      p.selling_price * (p.current_stock ?? p.stock_quantity ?? 0),
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -164,7 +162,6 @@ export default function ReportsPage() {
       {/* Tab 1: Financial P&L */}
       {reportTab === 'financial' && (
         <div className="space-y-6">
-          {/* Top 4 Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-blue-50/70 border-blue-200">
               <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Gross Sales Revenue</p>
@@ -207,7 +204,6 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          {/* Recharts Financial Bar Chart */}
           <Card>
             <CardHeader>
               <CardTitle>Financial Summary Breakdown (KES)</CardTitle>
@@ -248,13 +244,13 @@ export default function ReportsPage() {
             <Card className="border-l-4 border-l-slate-700">
               <p className="text-xs font-bold text-slate-500 uppercase">Total Cost Basis Valuation</p>
               <h3 className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(reportMetrics?.inventoryCostValuation || 0)}</h3>
-              <p className="text-[10px] text-slate-400 mt-1">Sum of (Cost Price × Stock Qty)</p>
+              <p className="text-[10px] text-slate-400 mt-1">Sum of (Buying Price × Current Stock)</p>
             </Card>
 
             <Card className="border-l-4 border-l-blue-600">
               <p className="text-xs font-bold text-blue-700 uppercase">Total Retail Basis Valuation</p>
               <h3 className="text-2xl font-black text-blue-900 mt-1">{formatCurrency(reportMetrics?.inventoryRetailValuation || 0)}</h3>
-              <p className="text-[10px] text-blue-600 mt-1">Sum of (Selling Price × Stock Qty)</p>
+              <p className="text-[10px] text-blue-600 mt-1">Sum of (Selling Price × Current Stock)</p>
             </Card>
 
             <Card className="border-l-4 border-l-emerald-600">
@@ -288,13 +284,13 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-slate-100">
                 {sales.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-extrabold text-slate-900">{s.invoice_number}</td>
+                    <td className="p-3 font-extrabold text-slate-900">{s.invoice_number || s.id.slice(0, 8)}</td>
                     <td className="p-3 text-slate-500">{formatDateTime(s.created_at)}</td>
                     <td className="p-3 uppercase font-extrabold text-blue-600">{s.payment_method}</td>
                     <td className="p-3">{formatCurrency(s.total_amount)}</td>
                     <td className="p-3 text-red-600">-{formatCurrency(s.discount_amount)}</td>
                     <td className="p-3">{formatCurrency(s.tax_amount)}</td>
-                    <td className="p-3 text-right font-black text-slate-900">{formatCurrency(s.net_amount)}</td>
+                    <td className="p-3 text-right font-black text-slate-900">{formatCurrency(s.net_amount ?? s.total_amount ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>

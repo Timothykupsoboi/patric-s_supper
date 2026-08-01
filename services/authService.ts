@@ -5,6 +5,7 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
   platform_owner: 100,
   super_admin: 90,
   admin: 80,
+  owner: 85,
   manager: 60,
   accountant: 40,
   store_keeper: 30,
@@ -21,7 +22,6 @@ export const authService = {
 
     if (error) throw error;
 
-    // Fetch matching user profile from users table
     const profile = await this.getUserProfile(data.user.id);
     return { session: data.session, user: data.user, profile };
   },

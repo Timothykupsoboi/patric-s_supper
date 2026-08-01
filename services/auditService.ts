@@ -7,7 +7,7 @@ export const auditService = {
     entityType: string,
     entityId?: string,
     details?: Record<string, any>,
-    userId?: string,
+    userId: string = '00000000-0000-0000-0000-000000000001',
     supermarketId: string = '00000000-0000-0000-0000-000000000001'
   ): Promise<void> {
     const supabase = createClient();
@@ -16,9 +16,9 @@ export const auditService = {
         supermarket_id: supermarketId,
         user_id: userId,
         action,
-        entity_type: entityType,
-        entity_id: entityId,
-        details,
+        table_name: entityType,
+        record_id: entityId,
+        new_values: details,
       },
     ]);
   },
@@ -28,10 +28,16 @@ export const auditService = {
     const { data, error } = await supabase
       .from('audit_logs')
       .select('*')
+      .eq('deleted', false)
       .order('created_at', { ascending: false })
       .limit(limit);
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((log: any) => ({
+      ...log,
+      entity_type: log.table_name,
+      entity_id: log.record_id,
+    }));
   },
 };

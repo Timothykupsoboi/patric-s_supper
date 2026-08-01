@@ -33,13 +33,14 @@ export interface FinancialReportMetrics {
 export const saleService = {
   async completeSale(payload: CompleteSalePayload): Promise<Sale> {
     const supabase = createClient();
-    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
 
     if (payload.paymentMethod === 'credit' && payload.customer) {
-      const projectedDebt = payload.customer.current_debt + payload.netAmount;
-      if (projectedDebt > payload.customer.borrow_limit) {
+      const currentDebt = payload.customer.balance ?? payload.customer.current_debt ?? 0;
+      const creditLimit = payload.customer.credit_limit ?? payload.customer.borrow_limit ?? 5000;
+      const projectedDebt = currentDebt + payload.netAmount;
+      if (projectedDebt > creditLimit) {
         throw new Error(
-          `Borrow limit exceeded! Maximum allowed credit is KES ${payload.customer.borrow_limit}. Current debt is KES ${payload.customer.current_debt}.`
+          `Borrow limit exceeded! Maximum allowed credit is KES ${creditLimit}. Current debt is KES ${currentDebt}.`
         );
       }
     }
@@ -52,80 +53,75 @@ export const saleService = {
           branch_id: payload.branch_id,
           cashier_id: payload.cashier_id,
           customer_id: payload.customer?.id,
-          invoice_number: invoiceNumber,
-          total_amount: payload.totalAmount,
+          total_amount: payload.netAmount || payload.totalAmount,
           discount_amount: payload.discountAmount,
           tax_amount: payload.taxAmount,
-          net_amount: payload.netAmount,
           payment_method: payload.paymentMethod,
-          status: 'completed',
+          payment_status: payload.paymentMethod === 'credit' ? 'unpaid' : 'paid',
+          hold_status: 'active',
           notes: payload.notes,
         },
       ])
       .select()
       .single();
 
-    if (saleError || !sale) throw saleError || new Error('Failed to create sale header');
+    if (saleError || !sale) throw saleError || new Error('Failed to create sale transaction');
 
     const saleItems = payload.cartItems.map((item) => {
       const itemSubtotal = item.product.selling_price * item.quantity - item.discount;
-      const vatAmount = (itemSubtotal * (item.product.vat_rate || 0)) / 100;
+      const taxVal = (itemSubtotal * (item.product.tax_rate ?? item.product.vat_rate ?? 0)) / 100;
       return {
         sale_id: sale.id,
         product_id: item.product.id,
-        product_name: item.product.name,
         quantity: item.quantity,
         unit_price: item.product.selling_price,
+        subtotal: itemSubtotal,
         discount: item.discount,
-        total_price: itemSubtotal,
-        vat_amount: vatAmount,
+        tax: taxVal,
+        supermarket_id: payload.supermarket_id,
+        branch_id: payload.branch_id,
       };
     });
 
     const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
     if (itemsError) throw itemsError;
 
+    // Trigger stock transactions (type: 'out')
     for (const item of payload.cartItems) {
-      const newQuantity = Math.max(0, item.product.stock_quantity - item.quantity);
-      await supabase
-        .from('products')
-        .update({ stock_quantity: newQuantity, updated_at: new Date().toISOString() })
-        .eq('id', item.product.id);
-
       await supabase.from('stock_transactions').insert([
         {
           supermarket_id: payload.supermarket_id,
           branch_id: payload.branch_id,
           product_id: item.product.id,
-          type: 'sale',
-          quantity: -item.quantity,
-          reason: `Sale ${invoiceNumber}`,
-          created_by: payload.cashier_id,
+          type: 'out',
+          quantity: item.quantity,
+          unit_cost: item.product.buying_price ?? item.product.cost_price ?? 0,
+          notes: `POS Sale ${sale.id}`,
         },
       ]);
     }
 
+    // Trigger customer credit charge if credit sale
     if (payload.paymentMethod === 'credit' && payload.customer) {
-      const newDebt = payload.customer.current_debt + payload.netAmount;
-      await supabase
-        .from('customers')
-        .update({ current_debt: newDebt, updated_at: new Date().toISOString() })
-        .eq('id', payload.customer.id);
-
       await supabase.from('customer_credits').insert([
         {
           supermarket_id: payload.supermarket_id,
+          branch_id: payload.branch_id,
           customer_id: payload.customer.id,
-          sale_id: sale.id,
-          type: 'borrow',
+          type: 'charge',
           amount: payload.netAmount,
-          balance_after: newDebt,
-          notes: `Credit Sale ${invoiceNumber}`,
+          description: `Credit Sale ${sale.id}`,
         },
       ]);
     }
 
-    return { ...sale, sale_items: saleItems };
+    return {
+      ...sale,
+      invoice_number: `INV-${sale.id.slice(0, 8)}`,
+      net_amount: sale.total_amount,
+      status: sale.hold_status,
+      sale_items: saleItems,
+    };
   },
 
   async getRecentSales(limit: number = 20): Promise<Sale[]> {
@@ -138,7 +134,13 @@ export const saleService = {
       .limit(limit);
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((s: any) => ({
+      ...s,
+      invoice_number: `INV-${s.id.slice(0, 8)}`,
+      net_amount: s.total_amount,
+      status: s.hold_status,
+    }));
   },
 
   async getSalesMetrics(): Promise<{ todaySales: number; todayRevenue: number; totalOrders: number }> {
@@ -148,13 +150,13 @@ export const saleService = {
 
     const { data, error } = await supabase
       .from('sales')
-      .select('net_amount')
+      .select('total_amount')
       .gte('created_at', todayStart.toISOString())
-      .eq('status', 'completed');
+      .eq('deleted', false);
 
     if (error) throw error;
 
-    const todayRevenue = (data || []).reduce((acc: number, curr: { net_amount: number }) => acc + (curr.net_amount || 0), 0);
+    const todayRevenue = (data || []).reduce((acc: number, curr: { total_amount: number }) => acc + (curr.total_amount || 0), 0);
     return {
       todaySales: (data || []).length,
       todayRevenue,
@@ -165,22 +167,19 @@ export const saleService = {
   async getComprehensiveFinancialReport(): Promise<FinancialReportMetrics> {
     const supabase = createClient();
 
-    // 1. Query Sales
     const { data: sales = [] } = await supabase
       .from('sales')
-      .select('total_amount, discount_amount, tax_amount, net_amount, sale_items(*, product:products(cost_price))')
-      .eq('status', 'completed')
+      .select('total_amount, discount_amount, tax_amount, sale_items(*, product:products(buying_price))')
       .eq('deleted', false);
 
-    // 2. Query Expenses
     const { data: expenses = [] } = await supabase
       .from('expenses')
-      .select('amount');
+      .select('amount')
+      .eq('deleted', false);
 
-    // 3. Query Products Valuation
     const { data: products = [] } = await supabase
       .from('products')
-      .select('cost_price, selling_price, stock_quantity')
+      .select('buying_price, selling_price, current_stock')
       .eq('deleted', false);
 
     let grossSales = 0;
@@ -190,13 +189,13 @@ export const saleService = {
     let cogs = 0;
 
     (sales || []).forEach((s: any) => {
-      grossSales += s.total_amount || 0;
+      grossSales += (s.total_amount || 0) + (s.discount_amount || 0);
       totalDiscounts += s.discount_amount || 0;
       totalTax += s.tax_amount || 0;
-      netSales += s.net_amount || 0;
+      netSales += s.total_amount || 0;
 
       (s.sale_items || []).forEach((item: any) => {
-        const itemCost = item.product?.cost_price || (item.unit_price * 0.7); // Fallback cost ratio if missing
+        const itemCost = item.product?.buying_price || (item.unit_price * 0.7);
         cogs += itemCost * item.quantity;
       });
     });
@@ -209,8 +208,8 @@ export const saleService = {
     let inventoryRetailValuation = 0;
 
     (products || []).forEach((p: any) => {
-      inventoryCostValuation += (p.cost_price || 0) * (p.stock_quantity || 0);
-      inventoryRetailValuation += (p.selling_price || 0) * (p.stock_quantity || 0);
+      inventoryCostValuation += (p.buying_price || 0) * (p.current_stock || 0);
+      inventoryRetailValuation += (p.selling_price || 0) * (p.current_stock || 0);
     });
 
     const potentialMargin = Math.max(0, inventoryRetailValuation - inventoryCostValuation);
