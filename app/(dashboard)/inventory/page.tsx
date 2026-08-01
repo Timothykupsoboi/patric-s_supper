@@ -5,19 +5,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productService } from '@/services/productService';
 import { inventoryService } from '@/services/inventoryService';
 import { supplierService } from '@/services/supplierService';
+import { productSchema } from '@/lib/validations';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft } from 'lucide-react';
+import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft, Sparkles, AlertCircle } from 'lucide-react';
 import { Product, PurchaseOrder } from '@/types';
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'products' | 'movements' | 'purchase_orders' | 'expiry'>('products');
   const [search, setSearch] = useState('');
+
+  // Toast / Error Notifications
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Dialog States
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -69,7 +74,8 @@ export default function InventoryPage() {
 
   const createProductMutation = useMutation({
     mutationFn: (newProd: any) => productService.createProduct(newProd),
-    onSuccess: () => {
+    onSuccess: (savedProduct) => {
+      // 14. React Query cache invalidated
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setIsAddOpen(false);
       setName('');
@@ -79,6 +85,15 @@ export default function InventoryPage() {
       setSellingPrice('');
       setCurrentStock('');
       setExpiryDate('');
+      setErrorMessage(null);
+
+      // 16. Success notification displayed
+      setSuccessMessage(`Product "${savedProduct.name}" created successfully in Supabase!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    },
+    onError: (err: any) => {
+      // 13. Errors properly handled & rendered
+      setErrorMessage(err.message || 'Failed to save product to Supabase. Check database constraints.');
     },
   });
 
@@ -93,26 +108,38 @@ export default function InventoryPage() {
   });
 
   const handleCreateProduct = (e: React.FormEvent) => {
+    // 1. Button click & 2. Submit handler fires
     e.preventDefault();
-    createProductMutation.mutate({
-      supermarket_id: '00000000-0000-0000-0000-000000000001',
-      category_id: categoryId || undefined,
-      name,
-      barcode: barcode || `BC-${Date.now()}`,
-      sku: sku || `SKU-${Date.now().toString().slice(-6)}`,
+    setErrorMessage(null);
+
+    const rawData = {
+      name: name.trim(),
+      barcode: barcode.trim() || `BC-${Date.now()}`,
+      sku: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
       unit: 'Pcs',
       buying_price: parseFloat(buyingPrice) || 0,
       selling_price: parseFloat(sellingPrice) || 0,
       current_stock: parseFloat(currentStock) || 0,
       minimum_stock: parseFloat(minimumStock) || 5,
-      expiry_date: expiryDate || undefined,
-    });
+      expiry_date: expiryDate.trim() || undefined,
+      category_id: categoryId.trim() || undefined,
+    };
+
+    // 4. Zod schema validation check
+    const validation = productSchema.safeParse(rawData);
+    if (!validation.success) {
+      const firstError = validation.error.errors[0]?.message || 'Invalid product form input';
+      setErrorMessage(firstError);
+      return;
+    }
+
+    // 5. Submit function / Mutation called
+    createProductMutation.mutate(validation.data);
   };
 
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
     createPOMutation.mutate({
-      supermarket_id: '00000000-0000-0000-0000-000000000001',
       supplier_id: poSupplierId,
       total_amount: parseFloat(poAmount) || 0,
     });
@@ -149,6 +176,20 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      {/* Notifications */}
+      {successMessage && (
+        <div className="bg-emerald-600 text-white px-4 py-3 rounded-xl text-xs font-extrabold flex items-center space-x-2 shadow-md animate-in slide-in-from-top-2">
+          <Sparkles className="w-4 h-4" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+      {errorMessage && (
+        <div className="bg-red-600 text-white px-4 py-3 rounded-xl text-xs font-extrabold flex items-center space-x-2 shadow-md animate-in slide-in-from-top-2">
+          <AlertCircle className="w-4 h-4" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4">
         <div>
@@ -388,8 +429,15 @@ export default function InventoryPage() {
             <Input label="Minimum Reorder Stock" type="number" value={minimumStock} onChange={(e) => setMinimumStock(e.target.value)} />
           </div>
           <Input label="Expiry Date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+
+          {errorMessage && (
+            <p className="text-xs text-red-600 font-bold text-center bg-red-50 p-2 rounded-lg border border-red-200">
+              {errorMessage}
+            </p>
+          )}
+
           <Button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-700 font-bold" disabled={createProductMutation.isPending}>
-            {createProductMutation.isPending ? 'Saving...' : 'Save Product'}
+            {createProductMutation.isPending ? 'Saving to Supabase...' : 'Save Product'}
           </Button>
         </form>
       </Dialog>

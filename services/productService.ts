@@ -12,7 +12,6 @@ export const productService = {
 
     if (error) throw error;
     
-    // Map database columns to Product objects with legacy accessors
     return (data || []).map((p: any) => ({
       ...p,
       cost_price: p.buying_price,
@@ -36,7 +35,7 @@ export const productService = {
 
   async createProduct(product: Partial<Product>): Promise<Product> {
     const supabase = createClient();
-    const payload = {
+    const payload: any = {
       name: product.name,
       sku: product.sku || `SKU-${Date.now().toString().slice(-6)}`,
       barcode: product.barcode || `BC-${Date.now()}`,
@@ -46,11 +45,20 @@ export const productService = {
       current_stock: product.current_stock ?? product.stock_quantity ?? 0,
       minimum_stock: product.minimum_stock ?? product.reorder_level ?? 5,
       tax_rate: product.tax_rate ?? product.vat_rate ?? 16,
-      category_id: product.category_id,
-      supplier_id: product.supplier_id,
-      expiry_date: product.expiry_date,
-      supermarket_id: product.supermarket_id,
     };
+
+    if (product.category_id && product.category_id.trim() !== '') {
+      payload.category_id = product.category_id;
+    }
+    if (product.supplier_id && product.supplier_id.trim() !== '') {
+      payload.supplier_id = product.supplier_id;
+    }
+    if (product.expiry_date && product.expiry_date.trim() !== '') {
+      payload.expiry_date = product.expiry_date;
+    }
+    if (product.supermarket_id && product.supermarket_id.trim() !== '') {
+      payload.supermarket_id = product.supermarket_id;
+    }
 
     const { data, error } = await supabase
       .from('products')
@@ -58,7 +66,10 @@ export const productService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Product Insert Error:', error);
+      throw new Error(error.message || 'Failed to insert product into Supabase');
+    }
 
     return {
       ...data,
