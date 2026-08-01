@@ -1,0 +1,242 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { employeeService } from '@/services/employeeService';
+import { auditService } from '@/services/auditService';
+import { useAuth } from '@/context/AuthContext';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Dialog } from '@/components/ui/dialog';
+import { formatDateTime } from '@/lib/utils';
+import { UserCheck, Shield, KeyRound, Activity, ShieldAlert, Plus, Edit3 } from 'lucide-react';
+import { UserProfile, UserRole } from '@/types';
+
+export default function EmployeesPage() {
+  const queryClient = useQueryClient();
+  const { user, hasPermission } = useAuth();
+  const [activeTab, setActiveTab] = useState<'employees' | 'audit_logs'>('employees');
+
+  // Edit Employee State
+  const [editEmployee, setEditEmployee] = useState<UserProfile | null>(null);
+  const [role, setRole] = useState<UserRole>('cashier');
+  const [pin, setPin] = useState('');
+
+  const isManagerOrAbove = hasPermission('manager');
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeeService.getEmployees(),
+    enabled: isManagerOrAbove,
+  });
+
+  const { data: auditLogs = [] } = useQuery({
+    queryKey: ['auditLogs'],
+    queryFn: () => auditService.getAuditLogs(50),
+    enabled: isManagerOrAbove,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<UserProfile> }) =>
+      employeeService.updateEmployee(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setEditEmployee(null);
+    },
+  });
+
+  const handleSaveEmployee = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEmployee) return;
+    updateMutation.mutate({
+      id: editEmployee.id,
+      updates: { role, pin },
+    });
+  };
+
+  // RBAC Access Guard: Block cashiers from managing users
+  if (!isManagerOrAbove) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-slate-200">
+        <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4 border border-red-200">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-900">Access Restricted</h2>
+        <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4">
+          Employee management and audit logging require Manager or Administrator role permissions.
+        </p>
+        <Badge variant="danger">Role: {user?.role || 'Cashier'}</Badge>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Staff & RBAC Management</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Manage staff roles, terminal PIN shift credentials, and audit system activity logs</p>
+        </div>
+        <div className="flex space-x-2 mt-3 sm:mt-0">
+          <Badge variant="info" className="text-xs py-1 px-3">
+            <Shield className="w-3.5 h-3.5 mr-1" />
+            Active Role: {user?.role || 'Manager'}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex space-x-2 border-b border-slate-200 pb-2">
+        {[
+          { id: 'employees', label: `Staff Accounts (${employees.length})`, icon: UserCheck },
+          { id: 'audit_logs', label: `Activity Audit Logs (${auditLogs.length})`, icon: Activity },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+                isActive
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab 1: Staff Directory */}
+      {activeTab === 'employees' && (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Staff Name</th>
+                  <th className="p-3">Email Address</th>
+                  <th className="p-3">Assigned Role</th>
+                  <th className="p-3">Terminal PIN</th>
+                  <th className="p-3">Account Status</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {employees.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-extrabold text-slate-900">{emp.name}</td>
+                    <td className="p-3 text-slate-500">{emp.email}</td>
+                    <td className="p-3">
+                      <span className="uppercase font-black text-blue-600 px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
+                        {emp.role}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono font-bold tracking-widest text-slate-700">{emp.pin || '••••'}</td>
+                    <td className="p-3">
+                      <Badge variant="success">Active</Badge>
+                    </td>
+                    <td className="p-3 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditEmployee(emp);
+                          setRole(emp.role);
+                          setPin(emp.pin || '');
+                        }}
+                        className="text-[11px] font-bold"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 mr-1" />
+                        Edit Role & PIN
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 2: Activity Audit Logs */}
+      {activeTab === 'audit_logs' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>System Activity Logs</CardTitle>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Timestamp</th>
+                  <th className="p-3">User Action</th>
+                  <th className="p-3">Entity Type</th>
+                  <th className="p-3">Entity ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {auditLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-4 text-center text-slate-400">
+                      No system activity logs recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  auditLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50">
+                      <td className="p-3 text-slate-400">{formatDateTime(log.created_at)}</td>
+                      <td className="p-3 font-bold text-slate-900">{log.action}</td>
+                      <td className="p-3 uppercase font-extrabold text-blue-600">{log.entity_type}</td>
+                      <td className="p-3 font-mono text-slate-500">{log.entity_id || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Edit Role & PIN Modal */}
+      <Dialog isOpen={!!editEmployee} onClose={() => setEditEmployee(null)} title={`Edit Staff: ${editEmployee?.name}`}>
+        <form onSubmit={handleSaveEmployee} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Assign User Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as UserRole)}
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+            >
+              <option value="cashier">Cashier</option>
+              <option value="store_keeper">Store Keeper</option>
+              <option value="accountant">Accountant</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Administrator</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+          </div>
+
+          <Input
+            label="Terminal Shift Lock PIN (4-6 Digits)"
+            type="password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            maxLength={6}
+            placeholder="e.g. 1234"
+          />
+
+          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 font-bold" disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? 'Saving...' : 'Save Role & PIN'}
+          </Button>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
