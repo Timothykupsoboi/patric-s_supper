@@ -17,6 +17,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const getRedirectPathByRole = (role?: string): string => {
+    switch (role) {
+      case 'platform_owner':
+      case 'platform_admin':
+      case 'super_admin':
+        return '/admin/platform';
+      case 'cashier':
+        return '/pos';
+      case 'store_keeper':
+      case 'inventory_manager':
+        return '/inventory';
+      case 'accountant':
+        return '/reports';
+      case 'procurement_officer':
+        return '/suppliers';
+      case 'customer_service':
+        return '/customers';
+      case 'owner':
+      case 'branch_manager':
+      case 'manager':
+      case 'sales_manager':
+      default:
+        return '/dashboard';
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -26,10 +52,14 @@ export default function LoginPage() {
       const res = await authService.login(email, password);
       if (res.profile) {
         setUserProfile(res.profile);
+        const targetPath = getRedirectPathByRole(res.profile.role);
+        router.push(targetPath);
+      } else {
+        router.push('/dashboard');
       }
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Login failed. Please check your credentials.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -43,20 +73,20 @@ export default function LoginPage() {
             <Store className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">ANTIGRAVITY POS</h1>
-          <p className="text-sm text-slate-400 mt-1">Supermarket Cloud Management Login</p>
+          <p className="text-sm text-slate-400 mt-1">Enterprise Supermarket SaaS Portal</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Work Email Address</label>
             <div className="relative">
               <Mail className="w-5 h-5 text-slate-500 absolute left-3 top-2.5" />
               <Input
                 type="email"
-                placeholder="cashier@supermarket.co.ke"
+                placeholder="staff@supermarket.co.ke"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10 bg-slate-800 border-slate-700 text-white placeholder-slate-500"
+                className="pl-10 bg-slate-800 border-slate-700 text-white placeholder-slate-500 text-xs"
                 required
               />
             </div>
@@ -76,7 +106,7 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 bg-slate-800 border-slate-700 text-white placeholder-slate-500"
+                className="pl-10 bg-slate-800 border-slate-700 text-white placeholder-slate-500 text-xs"
                 required
               />
             </div>
@@ -84,8 +114,8 @@ export default function LoginPage() {
 
           {error && <p className="text-xs text-red-400 text-center font-bold">{error}</p>}
 
-          <Button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 font-bold" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Sign In to Register'}
+          <Button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 font-bold text-xs" disabled={loading}>
+            {loading ? 'Authenticating Credentials...' : 'Sign In to Enterprise Workspace'}
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </form>
@@ -95,7 +125,7 @@ export default function LoginPage() {
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             <span>Supabase RLS Protected</span>
           </div>
-          <span>Cloud Edition v2.0</span>
+          <span>Automatic RBAC Routing</span>
         </div>
       </div>
     </div>
