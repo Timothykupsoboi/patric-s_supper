@@ -87,6 +87,7 @@ export interface CreateSupermarketPayload {
   owner_name: string;
   owner_email: string;
   owner_phone: string;
+  password?: string;
   country?: string;
   currency?: string;
   timezone?: string;

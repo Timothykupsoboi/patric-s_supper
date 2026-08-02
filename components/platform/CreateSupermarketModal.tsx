@@ -21,6 +21,8 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
   const [ownerName, setOwnerName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [country, setCountry] = useState('Kenya');
   const [currency, setCurrency] = useState('KES');
   const [timezone, setTimezone] = useState('Africa/Nairobi');
@@ -39,7 +41,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platformSupermarketsList'] });
       queryClient.invalidateQueries({ queryKey: ['platformMetrics'] });
-      setSuccessMessage('✓ Supermarket created successfully!');
+      setSuccessMessage('✓ Supermarket created successfully with owner credentials!');
       setTimeout(() => {
         setSuccessMessage('');
         onClose();
@@ -49,6 +51,8 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
         setOwnerName('');
         setOwnerEmail('');
         setOwnerPhone('');
+        setPassword('');
+        setConfirmPassword('');
         setAddress('');
         setLogoUrl('');
         setValidationError('');
@@ -67,12 +71,24 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
       setValidationError('Supermarket Business Name is required.');
       return;
     }
+    if (!defaultBranch.trim()) {
+      setValidationError('Default Branch Name is required.');
+      return;
+    }
     if (!ownerName.trim()) {
       setValidationError('Supermarket Owner Full Name is required.');
       return;
     }
     if (!ownerEmail.trim() || !ownerEmail.includes('@')) {
       setValidationError('A valid Owner Email Address is required.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setValidationError('Temporary Password is required and must be at least 6 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setValidationError('Temporary Password and Confirm Password do not match.');
       return;
     }
 
@@ -82,6 +98,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
       owner_name: ownerName.trim(),
       owner_email: ownerEmail.trim(),
       owner_phone: ownerPhone.trim(),
+      password: password.trim(),
       country,
       currency,
       timezone,
@@ -197,11 +214,33 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
                 required
               />
               <Input
-                label="Owner Phone Number"
+                label="Owner Phone Number *"
                 placeholder="+254 700 000 000"
                 value={ownerPhone}
                 onChange={(e) => setOwnerPhone(e.target.value)}
                 className="bg-slate-900 border-slate-800 text-white"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <Input
+                label="Temporary Password *"
+                type="password"
+                placeholder="At least 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-slate-900 border-slate-800 text-white"
+                required
+              />
+              <Input
+                label="Confirm Password *"
+                type="password"
+                placeholder="Re-enter temporary password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="bg-slate-900 border-slate-800 text-white"
+                required
               />
             </div>
           </div>

@@ -87,10 +87,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // C. Create Supermarket Owner in Users table
+    // C. Create Owner User in Supabase Auth & Users table
+    let finalOwnerId = crypto.randomUUID();
+    if (payload.owner_email && payload.password) {
+      const { data: authUser, error: authCreateError } = await supabaseAdmin.auth.admin.createUser({
+        email: payload.owner_email,
+        password: payload.password,
+        email_confirm: true,
+        user_metadata: {
+          name: payload.owner_name,
+        },
+      });
+
+      if (authCreateError) {
+        console.warn('Supabase Auth createUser notice:', authCreateError.message);
+      } else if (authUser?.user) {
+        finalOwnerId = authUser.user.id;
+      }
+    }
+
     const { error: userError } = await supabaseAdmin.from('users').insert([
       {
-        id: ownerUserId,
+        id: finalOwnerId,
         supermarket_id: supermarket.id,
         branch_id: branch.id,
         name: payload.owner_name,
