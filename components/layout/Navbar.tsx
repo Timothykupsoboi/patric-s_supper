@@ -9,6 +9,7 @@ import {
   Bell,
   Search,
   User,
+  Lock,
   LogOut,
   Building2,
   ChevronDown,
@@ -96,14 +97,25 @@ export function Navbar() {
           </div>
         </div>
 
-        <button
-          onClick={() => setIsLogoutOpen(true)}
-          className="flex items-center space-x-1 py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-extrabold text-xs transition-colors border border-red-100"
-          title="Sign Out Options"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          <span className="hidden md:inline">Sign Out</span>
-        </button>
+        {user?.role === 'platform_owner' ? (
+          <button
+            onClick={() => setIsLogoutOpen(true)}
+            className="flex items-center space-x-1.5 py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-extrabold text-xs transition-colors border border-red-100"
+            title="Platform Owner Sign Out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Sign Out</span>
+          </button>
+        ) : (
+          <button
+            onClick={lockTerminal}
+            className="flex items-center space-x-1.5 py-1.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-extrabold text-xs transition-all border border-blue-200 shadow-2xs"
+            title="Lock Terminal (PIN required to return)"
+          >
+            <Lock className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden md:inline">Lock Terminal</span>
+          </button>
+        )}
       </div>
 
       <CommandPalette />

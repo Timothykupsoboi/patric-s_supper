@@ -93,15 +93,6 @@ export function Sidebar() {
           <span>Lock Terminal</span>
         </button>
 
-        <button
-          onClick={() => setIsLogoutOpen(true)}
-          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-white border border-red-800/40 text-xs font-extrabold transition-all"
-          title="Sign out of account entirely"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          <span>Log Out of Account</span>
-        </button>
-
         <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between pt-1">
           <span>Supabase Multi-Tenant</span>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

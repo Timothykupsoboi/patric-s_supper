@@ -9,12 +9,12 @@ import { useAuth } from '@/context/AuthContext';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Save, AlertCircle, Sparkles, UserCheck, Store, Lock, Camera } from 'lucide-react';
+import { Save, AlertCircle, Sparkles, UserCheck, Store, Lock, Timer } from 'lucide-react';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const { user, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'store'>('profile');
+  const { user, refreshProfile, autoLockTimeoutMinutes, updateAutoLockTimeout } = useAuth();
+  const [activeTab, setActiveTab] = useState<'profile' | 'store' | 'terminal'>('profile');
 
   // Personal Profile State
   const [fullName, setFullName] = useState('');
@@ -142,7 +142,7 @@ export default function SettingsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex space-x-2 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('profile')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
@@ -166,8 +166,100 @@ export default function SettingsPage() {
           <Store className="w-4 h-4" />
           <span>Store Business Profile</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('terminal')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+            activeTab === 'terminal'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Lock className="w-4 h-4" />
+          <span>Terminal Security</span>
+        </button>
       </div>
 
+      {/* Tab 3: Terminal Security Settings */}
+      {activeTab === 'terminal' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auto-Lock Inactivity Timeout</CardTitle>
+            </CardHeader>
+            <div className="p-4 space-y-4">
+              <p className="text-xs text-slate-500">
+                The terminal automatically locks after a period of inactivity. The user must re-enter their 4-digit PIN to resume.
+                The Supabase session remains active — only the terminal screen is locked.
+              </p>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-2">
+                  <Timer className="w-4 h-4 inline mr-1.5" />
+                  Inactivity Timeout Duration
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { label: '5 Minutes', value: 5 },
+                    { label: '10 Minutes (Default)', value: 10 },
+                    { label: '15 Minutes', value: 15 },
+                    { label: '30 Minutes', value: 30 },
+                    { label: '60 Minutes', value: 60 },
+                    { label: 'Never (Disabled)', value: 0 },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => updateAutoLockTimeout(opt.value)}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-extrabold border transition-all ${
+                        autoLockTimeoutMinutes === opt.value
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-slate-400 mt-3">
+                  Current setting:{' '}
+                  <strong className="text-slate-700">
+                    {autoLockTimeoutMinutes === 0
+                      ? 'Never (Auto-lock disabled)'
+                      : `${autoLockTimeoutMinutes} minutes of inactivity`}
+                  </strong>
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>What Counts as Activity</CardTitle>
+            </CardHeader>
+            <div className="p-4">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-600">
+                {[
+                  'Mouse movement',
+                  'Mouse click or button press',
+                  'Touch screen interaction',
+                  'Keyboard key press',
+                  'Barcode scanner input',
+                  'Completing a sale',
+                  'Creating or editing data',
+                  'Scrolling the page',
+                ].map((item) => (
+                  <li key={item} className="flex items-center space-x-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Card>
+        </div>
+      )}
       {/* Tab 1: Personal Profile Editing */}
       {activeTab === 'profile' && (
         <form onSubmit={handleSaveProfile} className="space-y-6">

@@ -11,10 +11,12 @@ interface AuthContextType {
   accountOwner: UserProfile | null;
   roleCategory: UserRoleCategory | null;
   loading: boolean;
+  autoLockTimeoutMinutes: number;
   logout: () => Promise<void>;
   logoutAccount: () => Promise<void>;
   lockTerminal: () => void;
   setTerminalEmployee: (emp: UserProfile) => void;
+  updateAutoLockTimeout: (minutes: number) => void;
   hasPermission: (permission: PermissionKey | UserRole) => boolean;
   refreshProfile: () => Promise<void>;
   setUserProfile: (profile: UserProfile | null) => void;
@@ -25,10 +27,12 @@ const AuthContext = createContext<AuthContextType>({
   accountOwner: null,
   roleCategory: null,
   loading: true,
+  autoLockTimeoutMinutes: 10,
   logout: async () => {},
   logoutAccount: async () => {},
   lockTerminal: () => {},
   setTerminalEmployee: () => {},
+  updateAutoLockTimeout: () => {},
   hasPermission: () => false,
   refreshProfile: async () => {},
   setUserProfile: () => {},
@@ -38,10 +42,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accountOwner, setAccountOwner] = useState<UserProfile | null>(null);
   const [terminalUser, setTerminalUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [autoLockTimeoutMinutes, setAutoLockTimeoutMinutes] = useState<number>(10);
+  const lastActivityRef = React.useRef<number>(Date.now());
 
   // Active user in context is active terminal employee if unlocked, else account owner
   const activeUser = terminalUser || accountOwner;
   const roleCategory: UserRoleCategory | null = activeUser ? authService.getRoleCategory(activeUser.role) : null;
+
+  // Load configured auto-lock timeout from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('terminal_auto_lock_timeout_minutes');
+      if (stored !== null) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed)) {
+          setAutoLockTimeoutMinutes(parsed);
+        }
+      }
+    }
+  }, []);
+
+  const updateAutoLockTimeout = (minutes: number) => {
+    setAutoLockTimeoutMinutes(minutes);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('terminal_auto_lock_timeout_minutes', minutes.toString());
+      } catch {}
+    }
+  };
+
+  // Inactivity Auto-Lock Listener — skips Platform Owner entirely
+  useEffect(() => {
+    const isPlatformOwner = accountOwner?.role === 'platform_owner';
+    if (isPlatformOwner) return;
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+
+    const intervalId = setInterval(() => {
+      if (autoLockTimeoutMinutes <= 0) return; // 0 means Never / Disabled
+
+      const isUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('terminal_unlocked') === 'true';
+      if (terminalUser || isUnlocked) {
+        const elapsedMs = Date.now() - lastActivityRef.current;
+        const timeoutMs = autoLockTimeoutMinutes * 60 * 1000;
+
+        if (elapsedMs >= timeoutMs) {
+          console.warn(`[Auto-Lock] Terminal locked after ${autoLockTimeoutMinutes} minutes of inactivity.`);
+          lockTerminal();
+        }
+      }
+    }, 3000);
+
+    return () => {
+      events.forEach((evt) => window.removeEventListener(evt, resetTimer));
+      clearInterval(intervalId);
+    };
+  }, [autoLockTimeoutMinutes, terminalUser, accountOwner]);
 
   const refreshProfile = async () => {
     try {
@@ -195,10 +256,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accountOwner,
         roleCategory,
         loading,
+        autoLockTimeoutMinutes,
         logout,
         logoutAccount,
         lockTerminal,
         setTerminalEmployee,
+        updateAutoLockTimeout,
         hasPermission,
         refreshProfile,
         setUserProfile: (profile) => setAccountOwner(profile),
