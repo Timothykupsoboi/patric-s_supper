@@ -24,15 +24,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>({
-    id: 'demo-user-cashier',
-    name: 'Main Cashier',
-    email: 'cashier@supermarket.co.ke',
-    role: 'admin',
-    supermarket_id: '00000000-0000-0000-0000-000000000001',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  });
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshProfile = async () => {

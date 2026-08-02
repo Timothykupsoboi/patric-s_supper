@@ -202,6 +202,47 @@ export const saleService = {
     }));
   },
 
+  async getHourlySales(): Promise<Array<{ time: string; sales: number }>> {
+    const supabase = createClient();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { data: sales = [] } = await supabase
+      .from('sales')
+      .select('created_at, total_amount')
+      .gte('created_at', todayStart.toISOString())
+      .eq('deleted', false);
+
+    const hourlyMap: Record<string, number> = {
+      '08:00': 0,
+      '10:00': 0,
+      '12:00': 0,
+      '14:00': 0,
+      '16:00': 0,
+      '18:00': 0,
+      '20:00': 0,
+    };
+
+    (sales || []).forEach((s: { created_at: string; total_amount: number }) => {
+      const date = new Date(s.created_at);
+      const hour = date.getHours();
+      let slot = '08:00';
+      if (hour >= 20) slot = '20:00';
+      else if (hour >= 18) slot = '18:00';
+      else if (hour >= 16) slot = '16:00';
+      else if (hour >= 14) slot = '14:00';
+      else if (hour >= 12) slot = '12:00';
+      else if (hour >= 10) slot = '10:00';
+
+      hourlyMap[slot] = (hourlyMap[slot] || 0) + (s.total_amount || 0);
+    });
+
+    return Object.keys(hourlyMap).map((slot) => ({
+      time: slot,
+      sales: hourlyMap[slot],
+    }));
+  },
+
   async getSalesMetrics(): Promise<{
     todaySales: number;
     todayRevenue: number;

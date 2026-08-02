@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { unlockTerminal } from '@/store/authSlice';
 import { employeeService } from '@/services/employeeService';
-import { Lock, KeyRound, ShieldAlert } from 'lucide-react';
+import { Lock, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -26,12 +26,6 @@ export function TerminalLockModal() {
     setLoading(true);
     setError('');
     try {
-      // In web mode, allow PIN 1234 or verify against user profile in Supabase
-      if (pin === '1234' || pin === '0000') {
-        dispatch(unlockTerminal());
-        setPin('');
-        return;
-      }
       const employee = await employeeService.verifyPin(pin);
       if (employee) {
         dispatch(unlockTerminal());
@@ -39,7 +33,7 @@ export function TerminalLockModal() {
       } else {
         setError('Invalid cashier PIN code.');
       }
-    } catch (err: any) {
+    } catch {
       setError('PIN verification failed.');
     } finally {
       setLoading(false);
@@ -53,13 +47,13 @@ export function TerminalLockModal() {
           <Lock className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-extrabold text-gray-900 mb-1">Terminal Locked</h2>
-        <p className="text-sm text-gray-500 mb-6">Enter cashier PIN to resume register operations.</p>
+        <p className="text-sm text-gray-500 mb-6">Enter assigned cashier PIN to resume register operations.</p>
 
         <form onSubmit={handleUnlock} className="space-y-4">
           <div className="relative">
             <Input
               type="password"
-              placeholder="Enter PIN (e.g. 1234)"
+              placeholder="Enter PIN"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               className="text-center text-2xl tracking-widest font-bold py-3"
@@ -79,8 +73,6 @@ export function TerminalLockModal() {
             {loading ? 'Verifying...' : 'Unlock Terminal'}
           </Button>
         </form>
-
-        <p className="text-xs text-gray-400 mt-6">Default demo cashier PIN: <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">1234</code></p>
       </div>
     </div>
   );

@@ -263,7 +263,7 @@ export default function POSPage() {
         <PaymentModal
           isOpen={isPaymentOpen}
           onClose={() => setIsPaymentOpen(false)}
-          onSaleCompleted={(sale) => setCompletedSale(sale)}
+          onSaleCompleted={(sale: Sale) => setCompletedSale(sale)}
         />
       )}
 

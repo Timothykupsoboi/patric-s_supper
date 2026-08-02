@@ -8,17 +8,9 @@ export interface AuthState {
 }
 
 const initialState: AuthState = {
-  user: {
-    id: 'demo-user-cashier',
-    name: 'Main Cashier',
-    email: 'cashier@supermarket.co.ke',
-    role: 'cashier',
-    supermarket_id: '00000000-0000-0000-0000-000000000001',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
+  user: null,
   isTerminalLocked: false,
-  activeShiftId: 'shift-001',
+  activeShiftId: null,
 };
 
 export const authSlice = createSlice({

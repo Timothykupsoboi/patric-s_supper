@@ -4,89 +4,72 @@ import React, { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { clearCart } from '@/store/cartSlice';
 import { saleService } from '@/services/saleService';
-import { mpesaService } from '@/services/mpesaService';
+import { customerService } from '@/services/customerService';
+import { useAuth } from '@/context/AuthContext';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PaymentMethod, Sale } from '@/types';
 import { formatCurrency } from '@/lib/utils';
-import { Banknote, CreditCard, Smartphone, UserX, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { PaymentMethod, Sale } from '@/types';
+import { Banknote, CreditCard, Smartphone, UserCheck, AlertTriangle } from 'lucide-react';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaleCompleted: (sale: Sale) => void;
+  onSaleCompleted?: (sale: Sale) => void;
+  onSuccess?: (receiptData: unknown) => void;
 }
 
-export function PaymentModal({ isOpen, onClose, onSaleCompleted }: PaymentModalProps) {
+export function PaymentModal({ isOpen, onClose, onSaleCompleted, onSuccess }: PaymentModalProps) {
   const dispatch = useAppDispatch();
+  const { user } = useAuth();
   const { items, customer, globalDiscount } = useAppSelector((state) => state.cart);
-  const { user } = useAppSelector((state) => state.auth);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [cashTendered, setCashTendered] = useState<string>('');
-  const [mpesaPhone, setMpesaPhone] = useState<string>(customer?.phone || '');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-  const [mpesaStatus, setMpesaStatus] = useState<string>('');
+  const [mpesaPhone, setMpesaPhone] = useState<string>('');
+  const [mpesaRef, setMpesaRef] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const subtotal = items.reduce((sum, item) => sum + item.product.selling_price * item.quantity - item.discount, 0);
-  const taxAmount = items.reduce(
-    (sum, item) => sum + ((item.product.selling_price * item.quantity - item.discount) * (item.product.vat_rate || 0)) / 100,
-    0
-  );
-  const netTotal = Math.max(0, subtotal - globalDiscount);
-  const changeDue = Math.max(0, (parseFloat(cashTendered) || 0) - netTotal);
+  const subtotal = items.reduce((acc, item) => acc + item.product.selling_price * item.quantity - item.discount, 0);
+  const discountVal = globalDiscount || 0;
+  const taxAmount = (Math.max(0, subtotal - discountVal) * 0.16);
+  const netTotal = Math.max(0, subtotal - discountVal + taxAmount);
 
-  const handleProcessPayment = async () => {
-    setError('');
+  const cashNum = parseFloat(cashTendered) || 0;
+  const changeDue = Math.max(0, cashNum - netTotal);
+
+  const handleCheckout = async () => {
+    setError(null);
     setLoading(true);
 
     try {
-      // 1. Borrow limit validation if credit sale
-      if (paymentMethod === 'credit') {
-        if (!customer) {
-          setError('A customer profile must be selected for store account credit sales.');
-          setLoading(false);
-          return;
-        }
-        const currentDebt = customer.balance ?? customer.current_debt ?? 0;
-        const creditLimit = customer.credit_limit ?? customer.borrow_limit ?? 5000;
-        const projectedDebt = currentDebt + netTotal;
-
-        if (projectedDebt > creditLimit) {
-          setError(
-            `Borrow limit exceeded! Customer limit is KES ${creditLimit.toFixed(
-              2
-            )}, current debt is KES ${currentDebt.toFixed(
-              2
-            )}. Adding KES ${netTotal.toFixed(2)} exceeds limit by KES ${(
-              projectedDebt - creditLimit
-            ).toFixed(2)}.`
-          );
-          setLoading(false);
-          return;
-        }
+      if (!user?.id) {
+        throw new Error('No active cashier user session found. Please log in first.');
       }
 
-      // 2. M-Pesa STK Push simulation if M-Pesa
-      let mpesaRef = '';
-      if (paymentMethod === 'mpesa') {
-        setMpesaStatus('Sending STK Push prompt to customer phone...');
-        const res = await mpesaService.triggerStkPush(mpesaPhone, netTotal);
-        if (!res.success) {
-          setError(res.message);
-          setLoading(false);
-          return;
+      // 1. Validation for Cash Payment
+      if (paymentMethod === 'cash' && cashNum < netTotal) {
+        throw new Error(`Insufficient cash tendered. Total is KES ${netTotal.toFixed(2)}.`);
+      }
+
+      // 2. Validation for Customer Credit Payment
+      if (paymentMethod === 'credit') {
+        if (!customer) {
+          throw new Error('Please select a customer profile to process a store credit debt sale.');
         }
-        mpesaRef = res.referenceNumber || '';
-        setMpesaStatus(`PIN prompt received. Transaction verified (${mpesaRef}).`);
+
+        const limitCheck = await customerService.checkBorrowLimit(customer.id, netTotal);
+        if (!limitCheck.allowed) {
+          throw new Error(limitCheck.message || 'Customer borrowing limit reached!');
+        }
       }
 
       // 3. Complete Sale in Supabase Cloud
       const sale = await saleService.completeSale({
         supermarket_id: user?.supermarket_id || '00000000-0000-0000-0000-000000000001',
-        cashier_id: user?.id || 'demo-cashier-id',
+        cashier_id: user.id,
         customer: customer || undefined,
         cartItems: items,
         paymentMethod,
@@ -94,116 +77,144 @@ export function PaymentModal({ isOpen, onClose, onSaleCompleted }: PaymentModalP
         taxAmount,
         netAmount: netTotal,
         totalAmount: subtotal,
-        mpesaRef,
+        mpesaRef: paymentMethod === 'mpesa' ? mpesaRef : undefined,
       });
 
+      const receiptData = {
+        saleId: sale.id,
+        invoiceNumber: sale.invoice_number || `INV-${sale.id.slice(0, 8)}`,
+        date: new Date().toISOString(),
+        cashierName: user?.name || 'Cashier',
+        customerName: customer?.name || 'Walk-in Customer',
+        items,
+        subtotal,
+        discount: globalDiscount,
+        tax: taxAmount,
+        total: netTotal,
+        paymentMethod,
+        cashTendered: paymentMethod === 'cash' ? cashNum : undefined,
+        changeDue: paymentMethod === 'cash' ? changeDue : undefined,
+      };
+
       dispatch(clearCart());
+      if (onSaleCompleted) onSaleCompleted(sale);
+      if (onSuccess) onSuccess(receiptData);
       onClose();
-      onSaleCompleted(sale);
-    } catch (err: any) {
-      setError(err.message || 'Payment processing failed.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Checkout failed';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} title="Complete Sale Payment" className="max-w-md">
-      <div className="space-y-5">
-        {/* Total Header */}
+    <Dialog isOpen={isOpen} onClose={onClose} title="Select Checkout Payment Gateway" className="max-w-xl">
+      <div className="space-y-6">
+        {/* Payable Total Card */}
         <div className="bg-slate-900 text-white p-4 rounded-xl text-center">
-          <p className="text-xs text-slate-400 font-medium">TOTAL AMOUNT DUE</p>
-          <p className="text-3xl font-black text-emerald-400">{formatCurrency(netTotal)}</p>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Amount Payable</p>
+          <h2 className="text-3xl font-black text-emerald-400 mt-1">{formatCurrency(netTotal)}</h2>
+          <p className="text-[10px] text-slate-400 mt-1">Includes KES {taxAmount.toFixed(2)} (16% VAT)</p>
         </div>
 
-        {/* Payment Method Selector */}
+        {error && (
+          <div className="p-3 bg-red-50 text-red-700 text-xs font-semibold rounded-lg border border-red-200 flex items-center">
+            <AlertTriangle className="w-4 h-4 mr-2 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Gateway Selection Tabs */}
         <div>
-          <label className="block text-xs font-bold text-gray-700 mb-2">Select Payment Method</label>
-          <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs font-bold text-slate-700 mb-2">Payment Method</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { id: 'cash', label: 'Cash', icon: Banknote },
-              { id: 'card', label: 'Card / POS', icon: CreditCard },
-              { id: 'mpesa', label: 'M-Pesa STK', icon: Smartphone },
-              { id: 'credit', label: 'Store Credit (Debtor)', icon: UserX },
-            ].map((m) => {
-              const Icon = m.icon;
-              const isSelected = paymentMethod === m.id;
+              { id: 'cash', label: 'Cash', icon: Banknote, color: 'text-emerald-600' },
+              { id: 'mpesa', label: 'M-Pesa STK', icon: Smartphone, color: 'text-green-600' },
+              { id: 'card', label: 'Card/POS', icon: CreditCard, color: 'text-blue-600' },
+              { id: 'credit', label: 'Store Credit', icon: UserCheck, color: 'text-amber-600' },
+            ].map((method) => {
+              const Icon = method.icon;
+              const isSelected = paymentMethod === method.id;
               return (
                 <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                  className={`p-3 rounded-lg border text-left flex items-center space-x-2.5 text-xs font-bold transition-all ${
+                  key={method.id}
+                  onClick={() => setPaymentMethod(method.id as PaymentMethod)}
+                  className={`p-3 rounded-xl border flex flex-col items-center justify-center space-y-1.5 transition-all ${
                     isSelected
-                      ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
-                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-900 shadow-sm font-bold'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
-                  <span>{m.label}</span>
+                  <Icon className={`w-5 h-5 ${method.color}`} />
+                  <span className="text-xs">{method.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Dynamic Payment Input Details */}
+        {/* Dynamic Fields per Gateway */}
         {paymentMethod === 'cash' && (
-          <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+          <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <Input
-              label="Cash Tendered (KES)"
+              label="Cash Tendered Amount (KES)"
               type="number"
-              placeholder="e.g. 1000"
               value={cashTendered}
               onChange={(e) => setCashTendered(e.target.value)}
-              required
+              placeholder="Enter amount given by customer"
+              autoFocus
             />
-            <div className="flex justify-between items-center text-xs font-bold pt-1">
-              <span className="text-slate-600">Change Due to Customer:</span>
-              <span className="text-emerald-700 font-black text-sm">{formatCurrency(changeDue)}</span>
+            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200">
+              <span className="font-bold text-slate-600">Change Due to Customer:</span>
+              <span className="font-black text-emerald-600 text-sm">{formatCurrency(changeDue)}</span>
             </div>
           </div>
         )}
 
         {paymentMethod === 'mpesa' && (
-          <div className="space-y-2 bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+          <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <Input
-              label="Customer M-Pesa Phone Number"
-              placeholder="0712345678"
+              label="M-Pesa Phone Number"
+              type="text"
               value={mpesaPhone}
               onChange={(e) => setMpesaPhone(e.target.value)}
-              required
+              placeholder="e.g. 0712345678"
             />
-            {mpesaStatus && (
-              <p className="text-[11px] font-bold text-emerald-800 flex items-center mt-1">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600 animate-pulse" />
-                {mpesaStatus}
-              </p>
-            )}
+            <Input
+              label="M-Pesa Transaction Reference Code"
+              type="text"
+              value={mpesaRef}
+              onChange={(e) => setMpesaRef(e.target.value)}
+              placeholder="e.g. QKH789XYZ"
+            />
           </div>
         )}
 
         {paymentMethod === 'credit' && (
-          <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 space-y-1">
-            <div className="flex items-center text-amber-800 font-bold text-xs">
-              <AlertTriangle className="w-4 h-4 mr-1 text-amber-600" />
-              <span>Store Credit Debt Transaction</span>
-            </div>
-            <p className="text-[11px] text-amber-700">
-              Amount will be charged to <strong>{customer?.name || 'Customer Profile'}</strong> debtor balance.
-            </p>
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-1">
+            <p className="font-bold text-amber-900">Selected Customer Profile:</p>
+            {customer ? (
+              <div>
+                <p className="font-extrabold text-slate-900">{customer.name} ({customer.phone})</p>
+                <p className="text-[11px] text-amber-800">
+                  Current Balance: KES {(customer.balance ?? customer.current_debt ?? 0).toFixed(2)} / Borrow Limit: KES {(customer.credit_limit ?? customer.borrow_limit ?? 5000).toFixed(2)}
+                </p>
+              </div>
+            ) : (
+              <p className="text-red-600 font-bold">No customer selected! Please close this modal and attach a customer to the cart.</p>
+            )}
           </div>
         )}
 
-        {error && <p className="text-xs text-red-600 font-bold bg-red-50 p-2.5 rounded-lg border border-red-200">{error}</p>}
-
+        {/* Action Button */}
         <Button
-          type="button"
-          onClick={handleProcessPayment}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold py-3 text-sm"
-          disabled={loading}
+          onClick={handleCheckout}
+          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-xl"
+          disabled={loading || (paymentMethod === 'credit' && !customer)}
         >
-          {loading ? 'Processing Sale...' : `Confirm & Pay ${formatCurrency(netTotal)}`}
+          {loading ? 'Processing Sale...' : `Confirm & Finish Sale (${formatCurrency(netTotal)})`}
         </Button>
       </div>
     </Dialog>
