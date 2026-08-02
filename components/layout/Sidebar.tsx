@@ -38,19 +38,10 @@ export function Sidebar() {
     { name: 'Business Settings', href: '/settings', icon: Settings, permission: 'settings.manage' as PermissionKey },
   ];
 
-  // Navigation is generated strictly from role permissions
+  // Navigation is generated strictly from supermarket role permissions
   const navigation = allNavigation.filter((item) => {
     return authService.hasPermission(role, item.permission);
   });
-
-  if (authService.hasPermission(role, 'platform.manage')) {
-    navigation.unshift({
-      name: 'SaaS Platform Control',
-      href: '/admin/platform',
-      icon: ShieldCheck,
-      permission: 'platform.manage' as PermissionKey,
-    });
-  }
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 z-40">
