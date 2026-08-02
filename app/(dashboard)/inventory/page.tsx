@@ -12,13 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft, Sparkles, AlertCircle } from 'lucide-react';
+import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft, Sparkles, AlertCircle, Edit3, Trash2 } from 'lucide-react';
 import { Product, PurchaseOrder } from '@/types';
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'products' | 'movements' | 'purchase_orders' | 'expiry'>('products');
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   // Toast / Error Notifications
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function InventoryPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isPOOpen, setIsPOOpen] = useState(false);
   const [adjustItem, setAdjustItem] = useState<Product | null>(null);
+  const [editItem, setEditItem] = useState<Product | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [adjustType, setAdjustType] = useState<'in' | 'out' | 'adjustment_add' | 'adjustment_sub' | 'transfer_in' | 'transfer_out' | 'damaged' | 'expired'>('in');
   const [adjustReason, setAdjustReason] = useState('');
@@ -42,6 +44,7 @@ export default function InventoryPage() {
   const [minimumStock, setMinimumStock] = useState('5');
   const [expiryDate, setExpiryDate] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
 
   // Form State for Purchase Order
   const [poSupplierId, setPoSupplierId] = useState('');
@@ -50,6 +53,11 @@ export default function InventoryPage() {
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => productService.getProducts(),
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => productService.getCategories(),
   });
 
   const { data: suppliers = [] } = useQuery({
@@ -75,7 +83,6 @@ export default function InventoryPage() {
   const createProductMutation = useMutation({
     mutationFn: (newProd: any) => productService.createProduct(newProd),
     onSuccess: (savedProduct) => {
-      // 14. React Query cache invalidated
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setIsAddOpen(false);
       setName('');
@@ -85,15 +92,36 @@ export default function InventoryPage() {
       setSellingPrice('');
       setCurrentStock('');
       setExpiryDate('');
+      setImageUrl('');
       setErrorMessage(null);
-
-      // 16. Success notification displayed
-      setSuccessMessage(`Product "${savedProduct.name}" created successfully in Supabase!`);
+      setSuccessMessage(`Product "${savedProduct.name}" created successfully!`);
       setTimeout(() => setSuccessMessage(null), 4000);
     },
     onError: (err: any) => {
-      // 13. Errors properly handled & rendered
-      setErrorMessage(err.message || 'Failed to save product to Supabase. Check database constraints.');
+      setErrorMessage(err.message || 'Failed to save product to Supabase.');
+    },
+  });
+
+  const updateProductMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Product> }) =>
+      productService.updateProduct(id, updates),
+    onSuccess: (updatedProduct) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setEditItem(null);
+      setSuccessMessage(`Product "${updatedProduct.name}" updated successfully!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    },
+    onError: (err: any) => {
+      setErrorMessage(err.message || 'Failed to update product.');
+    },
+  });
+
+  const deleteProductMutation = useMutation({
+    mutationFn: (id: string) => productService.deleteProduct(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setSuccessMessage('Product deleted successfully.');
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -108,7 +136,6 @@ export default function InventoryPage() {
   });
 
   const handleCreateProduct = (e: React.FormEvent) => {
-    // 1. Button click & 2. Submit handler fires
     e.preventDefault();
     setErrorMessage(null);
 
@@ -123,18 +150,35 @@ export default function InventoryPage() {
       minimum_stock: parseFloat(minimumStock) || 5,
       expiry_date: expiryDate.trim() || undefined,
       category_id: categoryId.trim() || undefined,
+      image_url: imageUrl.trim() || undefined,
     };
 
-    // 4. Zod schema validation check
     const validation = productSchema.safeParse(rawData);
     if (!validation.success) {
-      const firstError = validation.error.errors[0]?.message || 'Invalid product form input';
-      setErrorMessage(firstError);
+      setErrorMessage(validation.error.errors[0]?.message || 'Invalid product data');
       return;
     }
 
-    // 5. Submit function / Mutation called
     createProductMutation.mutate(validation.data);
+  };
+
+  const handleUpdateProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editItem) return;
+
+    updateProductMutation.mutate({
+      id: editItem.id,
+      updates: {
+        name: editItem.name,
+        barcode: editItem.barcode,
+        sku: editItem.sku,
+        selling_price: editItem.selling_price,
+        cost_price: editItem.buying_price ?? editItem.cost_price,
+        stock_quantity: editItem.current_stock ?? editItem.stock_quantity,
+        reorder_level: editItem.minimum_stock ?? editItem.reorder_level,
+        expiry_date: editItem.expiry_date,
+      },
+    });
   };
 
   const handleCreatePO = (e: React.FormEvent) => {
@@ -167,12 +211,14 @@ export default function InventoryPage() {
     queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
   };
 
-  const filteredProducts = products.filter(
-    (p) =>
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.barcode?.includes(search) ||
-      p.sku?.toLowerCase().includes(search.toLowerCase())
-  );
+      p.sku?.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = !selectedCategory || p.category_id === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="space-y-6">
@@ -238,14 +284,28 @@ export default function InventoryPage() {
       {/* Tab 1: Product Catalog */}
       {activeTab === 'products' && (
         <Card>
-          <div className="mb-4 relative">
-            <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-2.5" />
-            <Input
-              placeholder="Search products by name, SKU, or barcode..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-11 text-xs"
-            />
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-2.5" />
+              <Input
+                placeholder="Search products by name, SKU, or barcode..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-11 text-xs"
+              />
+            </div>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-3 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700"
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="overflow-x-auto">
@@ -265,7 +325,16 @@ export default function InventoryPage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-extrabold text-slate-900">{p.name}</td>
+                    <td className="p-3 font-extrabold text-slate-900 flex items-center space-x-2">
+                      {p.image_url ? (
+                        <img src={p.image_url} alt={p.name} className="w-8 h-8 rounded-lg object-cover border" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-[10px]">
+                          IMG
+                        </div>
+                      )}
+                      <span>{p.name}</span>
+                    </td>
                     <td className="p-3 font-mono text-slate-500">
                       <span>{p.sku || 'N/A'}</span>
                       <br />
@@ -282,9 +351,24 @@ export default function InventoryPage() {
                         <Badge variant="success">In Stock</Badge>
                       )}
                     </td>
-                    <td className="p-3 text-right">
-                      <Button variant="outline" size="sm" onClick={() => setAdjustItem(p)} className="font-bold text-[11px]">
-                        Adjust Stock
+                    <td className="p-3 text-right space-x-1">
+                      <Button variant="outline" size="sm" onClick={() => setAdjustItem(p)} className="font-bold text-[11px] py-1">
+                        Adjust
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setEditItem(p)} className="font-bold text-[11px] py-1">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Delete product "${p.name}"?`)) {
+                            deleteProductMutation.mutate(p.id);
+                          }
+                        }}
+                        className="font-bold text-[11px] py-1 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </td>
                   </tr>
@@ -440,6 +524,40 @@ export default function InventoryPage() {
             {createProductMutation.isPending ? 'Saving to Supabase...' : 'Save Product'}
           </Button>
         </form>
+      </Dialog>
+
+      {/* Edit Product Modal */}
+      <Dialog isOpen={!!editItem} onClose={() => setEditItem(null)} title={`Edit Product: ${editItem?.name}`}>
+        {editItem && (
+          <form onSubmit={handleUpdateProduct} className="space-y-3">
+            <Input label="Product Name" value={editItem.name} onChange={(e) => setEditItem({ ...editItem, name: e.target.value })} required />
+            <div className="grid grid-cols-2 gap-2">
+              <Input label="Barcode" value={editItem.barcode} onChange={(e) => setEditItem({ ...editItem, barcode: e.target.value })} required />
+              <Input label="SKU Code" value={editItem.sku || ''} onChange={(e) => setEditItem({ ...editItem, sku: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Buying Price (KES)"
+                type="number"
+                value={(editItem.buying_price ?? editItem.cost_price ?? 0).toString()}
+                onChange={(e) => setEditItem({ ...editItem, buying_price: parseFloat(e.target.value) || 0 })}
+                required
+              />
+              <Input
+                label="Selling Price (KES)"
+                type="number"
+                value={editItem.selling_price.toString()}
+                onChange={(e) => setEditItem({ ...editItem, selling_price: parseFloat(e.target.value) || 0 })}
+                required
+              />
+            </div>
+            <Input label="Expiry Date" type="date" value={editItem.expiry_date || ''} onChange={(e) => setEditItem({ ...editItem, expiry_date: e.target.value })} />
+
+            <Button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-700 font-bold" disabled={updateProductMutation.isPending}>
+              {updateProductMutation.isPending ? 'Updating...' : 'Update Product'}
+            </Button>
+          </form>
+        )}
       </Dialog>
 
       {/* Stock Adjustment Modal */}
