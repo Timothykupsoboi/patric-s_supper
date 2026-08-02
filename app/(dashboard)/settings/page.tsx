@@ -290,7 +290,11 @@ export default function SettingsPage() {
     if (user) {
       setFullName(user.name || '');
       setUserPhone(user.phone || '');
-      setPhotoUrl(user.photo_url || '');
+      // photo_url is not stored in the DB — load from localStorage
+      const stored = typeof window !== 'undefined'
+        ? localStorage.getItem(`profile_photo_${user.id}`) || ''
+        : '';
+      setPhotoUrl(stored);
     }
   }, [user]);
 
@@ -314,11 +318,21 @@ export default function SettingsPage() {
     mutationFn: async () => {
       if (!user) return;
 
+      // photo_url does NOT exist in the users DB table — it is stored in localStorage.
+      // Only pass DB-safe fields to updateEmployee.
       await employeeService.updateEmployee(user.id, {
         name: fullName,
         phone: userPhone,
-        photo_url: photoUrl || undefined,
       });
+
+      // Persist photo URL to localStorage so it survives refresh
+      if (typeof window !== 'undefined') {
+        if (photoUrl) {
+          localStorage.setItem(`profile_photo_${user.id}`, photoUrl);
+        } else {
+          localStorage.removeItem(`profile_photo_${user.id}`);
+        }
+      }
 
       if (newPassword) {
         if (newPassword !== confirmPassword) {
@@ -445,11 +459,15 @@ export default function SettingsPage() {
                   userId={user.id}
                   onUploaded={(url) => {
                     setPhotoUrl(url);
-                    // Immediately persist to DB and refresh auth context
-                    employeeService
-                      .updateEmployee(user.id, { photo_url: url || undefined })
-                      .then(() => refreshProfile())
-                      .catch(() => {});
+                    // photo_url is NOT in the DB — persist to localStorage, then refresh context
+                    if (typeof window !== 'undefined') {
+                      if (url) {
+                        localStorage.setItem(`profile_photo_${user.id}`, url);
+                      } else {
+                        localStorage.removeItem(`profile_photo_${user.id}`);
+                      }
+                    }
+                    refreshProfile();
                   }}
                 />
               )}

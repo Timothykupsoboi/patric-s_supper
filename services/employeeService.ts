@@ -180,15 +180,27 @@ export const employeeService = {
       }
     }
 
+    // photo_url does NOT exist in the users table schema.
+    // Strip it from the DB payload — it is stored in localStorage by the client.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { photo_url, ...dbUpdates } = updates as any;
+
     const { data, error } = await supabase
       .from('users')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({ ...dbUpdates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+
+    // Re-attach photo_url from localStorage so callers get the full profile object
+    const storedPhotoUrl =
+      typeof window !== 'undefined'
+        ? localStorage.getItem(`profile_photo_${id}`) || undefined
+        : undefined;
+
+    return { ...data, photo_url: storedPhotoUrl };
   },
 
   async createEmployee(payload: {

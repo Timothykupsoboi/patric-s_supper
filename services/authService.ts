@@ -216,7 +216,14 @@ export const authService = {
       .single();
 
     if (error) return null;
-    return data;
+
+    // photo_url is NOT a DB column — restore it from localStorage
+    const storedPhotoUrl =
+      typeof window !== 'undefined'
+        ? localStorage.getItem(`profile_photo_${userId}`) || undefined
+        : undefined;
+
+    return { ...data, photo_url: storedPhotoUrl };
   },
 
   async getCurrentUserContext(): Promise<{
