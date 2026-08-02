@@ -32,7 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const session = await authService.getSession();
       if (session?.user) {
         const profile = await authService.getUserProfile(session.user.id);
-        if (profile) setUser(profile);
+        if (profile) {
+          if (profile.is_active === false) {
+            await authService.logout();
+            setUser(null);
+          } else {
+            setUser(profile);
+          }
+        }
       }
     } catch (e) {
       console.warn('Auth session profile query fallback:', e);
@@ -45,12 +52,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshProfile();
     const supabase = createClient();
 
-    // Listen for Auth changes (Session Refresh, Login, Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         const profile = await authService.getUserProfile(session.user.id);
         if (profile) {
-          setUser(profile);
+          if (profile.is_active === false) {
+            await authService.logout();
+            setUser(null);
+          } else {
+            setUser(profile);
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
