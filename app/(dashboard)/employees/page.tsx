@@ -26,6 +26,7 @@ import {
   Building2,
   Lock,
   RefreshCw,
+  Key,
 } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
 
@@ -306,7 +307,19 @@ export default function EmployeesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => toggleStatusMutation.mutate(emp)}
+                          onClick={() => {
+                            if (
+                              emp.role === 'supermarket_owner' ||
+                              emp.role === 'super_admin' ||
+                              emp.role === 'owner'
+                            ) {
+                              alert(
+                                'The primary Supermarket Owner account cannot perform this action on itself. Only the Platform Owner may suspend or deactivate a Supermarket Owner account.'
+                              );
+                              return;
+                            }
+                            toggleStatusMutation.mutate(emp);
+                          }}
                           className={`text-[11px] font-bold py-1 ${
                             isSuspended
                               ? 'text-emerald-700 border-emerald-300 hover:bg-emerald-50'
@@ -350,11 +363,11 @@ export default function EmployeesPage() {
                             setResetEmployee(emp);
                             setResetPassword('');
                           }}
-                          className="text-[11px] font-bold py-1 text-purple-700 border-purple-300 hover:bg-purple-50"
-                          title="Reset Password"
+                          className="text-[11px] font-bold py-1 text-slate-700"
+                          title="Reset Employee Password"
                         >
-                          <Lock className="w-3.5 h-3.5 mr-1" />
-                          Reset Pwd
+                          <Key className="w-3.5 h-3.5 mr-1" />
+                          Password
                         </Button>
 
                         {/* Delete Employee */}
@@ -362,14 +375,25 @@ export default function EmployeesPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            if (confirm(`Are you sure you want to delete employee "${emp.name}"?`)) {
+                            if (
+                              emp.role === 'supermarket_owner' ||
+                              emp.role === 'super_admin' ||
+                              emp.role === 'owner'
+                            ) {
+                              alert(
+                                'The primary Supermarket Owner account cannot perform this action on itself. Only the Platform Owner may delete a Supermarket Owner account.'
+                              );
+                              return;
+                            }
+                            if (confirm(`Are you sure you want to delete staff account "${emp.name}"?`)) {
                               deleteMutation.mutate(emp.id);
                             }
                           }}
                           className="text-[11px] font-bold py-1 text-red-600 border-red-200 hover:bg-red-50"
-                          title="Delete Employee"
+                          title="Delete Employee Account"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          Delete
                         </Button>
                       </td>
                     </tr>

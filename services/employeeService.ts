@@ -71,12 +71,30 @@ export const employeeService = {
       }));
   },
 
-  async toggleStatus(id: string, currentIsActive: boolean): Promise<UserProfile> {
+  async toggleStatus(id: string, currentStatus: boolean): Promise<UserProfile> {
     const supabase = createClient();
+    
+    // Check target employee role first
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', id)
+      .single();
+
+    if (
+      targetUser?.role === 'supermarket_owner' ||
+      targetUser?.role === 'super_admin' ||
+      targetUser?.role === 'owner'
+    ) {
+      throw new Error(
+        'The primary Supermarket Owner account cannot perform this action on itself. Only the Platform Owner may suspend or deactivate a Supermarket Owner account.'
+      );
+    }
+
     const { data, error } = await supabase
       .from('users')
       .update({
-        is_active: !currentIsActive,
+        is_active: !currentStatus,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -142,6 +160,25 @@ export const employeeService = {
 
   async updateEmployee(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     const supabase = createClient();
+
+    // Prevent removing Supermarket Owner role
+    if (updates.role) {
+      const { data: currentUser } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', id)
+        .single();
+
+      if (
+        (currentUser?.role === 'supermarket_owner' || currentUser?.role === 'super_admin' || currentUser?.role === 'owner') &&
+        !['supermarket_owner', 'super_admin', 'owner'].includes(updates.role)
+      ) {
+        throw new Error(
+          'The primary Supermarket Owner account cannot alter or remove its own primary owner role.'
+        );
+      }
+    }
+
     const { data, error } = await supabase
       .from('users')
       .update({ ...updates, updated_at: new Date().toISOString() })
@@ -155,6 +192,23 @@ export const employeeService = {
 
   async deleteEmployee(id: string): Promise<void> {
     const supabase = createClient();
+
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', id)
+      .single();
+
+    if (
+      targetUser?.role === 'supermarket_owner' ||
+      targetUser?.role === 'super_admin' ||
+      targetUser?.role === 'owner'
+    ) {
+      throw new Error(
+        'The primary Supermarket Owner account cannot perform this action on itself. Only the Platform Owner may suspend or delete a Supermarket Owner account.'
+      );
+    }
+
     const { error } = await supabase
       .from('users')
       .update({ deleted: true, is_active: false, updated_at: new Date().toISOString() })

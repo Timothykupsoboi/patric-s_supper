@@ -213,13 +213,27 @@ export const platformAdminService = {
 
   async suspendSupermarket(supermarketId: string, currentStatus: string): Promise<void> {
     const supabase = createClient();
-    const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
-    const { error } = await supabase
+    const isSuspending = currentStatus !== 'suspended';
+    const newStatus = isSuspending ? 'suspended' : 'active';
+    const isActiveUser = !isSuspending;
+
+    // 1. Update Supermarket Subscription Status
+    const { error: smError } = await supabase
       .from('supermarkets')
       .update({ subscription_status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', supermarketId);
 
-    if (error) throw error;
+    if (smError) throw smError;
+
+    // 2. Suspend/Reactivate all users belonging to this supermarket tenant
+    const { error: userError } = await supabase
+      .from('users')
+      .update({ is_active: isActiveUser, updated_at: new Date().toISOString() })
+      .eq('supermarket_id', supermarketId);
+
+    if (userError) {
+      console.warn('Supermarket user status sync error:', userError);
+    }
   },
 
   async deleteSupermarket(supermarketId: string): Promise<void> {

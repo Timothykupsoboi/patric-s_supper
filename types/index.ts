@@ -24,6 +24,8 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   phone?: string;
+  photo_url?: string;
+  address?: string;
   pin?: string;
   is_active: boolean;
   version?: number;
