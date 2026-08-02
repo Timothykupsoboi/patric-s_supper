@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Customer, CustomerCreditLog, Sale } from '@/types';
+import { authService } from './authService';
 
 export const customerService = {
   async getCustomers(): Promise<Customer[]> {
@@ -40,13 +41,15 @@ export const customerService = {
 
   async createCustomer(customer: Partial<Customer>): Promise<Customer> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const payload = {
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
       credit_limit: customer.credit_limit ?? customer.borrow_limit ?? 5000,
       balance: customer.balance ?? customer.current_debt ?? 0,
-      supermarket_id: customer.supermarket_id,
+      supermarket_id: customer.supermarket_id || ctx?.supermarketId,
+      branch_id: customer.branch_id || ctx?.branchId,
     };
 
     const { data, error } = await supabase
@@ -122,6 +125,7 @@ export const customerService = {
 
   async recordRepayment(customerId: string, amount: number, notes?: string): Promise<Customer> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
 
     const { data: customer, error: fetchErr } = await supabase
       .from('customers')
@@ -133,8 +137,8 @@ export const customerService = {
 
     const { error: creditErr } = await supabase.from('customer_credits').insert([
       {
-        supermarket_id: customer.supermarket_id,
-        branch_id: customer.branch_id,
+        supermarket_id: customer.supermarket_id || ctx?.supermarketId,
+        branch_id: customer.branch_id || ctx?.branchId,
         customer_id: customerId,
         type: 'payment',
         amount,

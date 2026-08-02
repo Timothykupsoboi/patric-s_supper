@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { StockTransaction, PurchaseOrder, Product } from '@/types';
+import { authService } from './authService';
 
 export const inventoryService = {
   async adjustStock(
@@ -11,19 +12,20 @@ export const inventoryService = {
     supermarketId?: string
   ): Promise<void> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
 
     const { data: product, error: fetchErr } = await supabase
       .from('products')
-      .select('buying_price, supermarket_id')
+      .select('buying_price, supermarket_id, branch_id')
       .eq('id', productId)
       .single();
 
     if (fetchErr || !product) throw fetchErr || new Error('Product not found');
 
-    // Trigger trigger_stock_transaction_reconcile in my-supabase-migration automatically updates current_stock!
     const { error: txErr } = await supabase.from('stock_transactions').insert([
       {
-        supermarket_id: supermarketId || product.supermarket_id,
+        supermarket_id: supermarketId || product.supermarket_id || ctx?.supermarketId,
+        branch_id: product.branch_id || ctx?.branchId,
         product_id: productId,
         type,
         quantity: Math.abs(quantity),
@@ -117,12 +119,13 @@ export const inventoryService = {
 
   async createPurchaseOrder(po: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const { data, error } = await supabase
       .from('purchases')
       .insert([
         {
-          supermarket_id: po.supermarket_id,
-          branch_id: po.branch_id,
+          supermarket_id: po.supermarket_id || ctx?.supermarketId,
+          branch_id: po.branch_id || ctx?.branchId,
           supplier_id: po.supplier_id,
           total_amount: po.total_amount || 0,
           status: 'ordered',

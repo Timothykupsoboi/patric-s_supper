@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/client';
 import { Sale, CartItem, PaymentMethod, Customer, Product } from '@/types';
+import { authService } from './authService';
 
 export interface CompleteSalePayload {
-  supermarket_id: string;
+  supermarket_id?: string;
   branch_id?: string;
-  cashier_id: string;
+  cashier_id?: string;
   customer?: Customer;
   cartItems: CartItem[];
   paymentMethod: PaymentMethod;
@@ -33,6 +34,11 @@ export interface FinancialReportMetrics {
 export const saleService = {
   async completeSale(payload: CompleteSalePayload): Promise<Sale> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
+
+    const finalSupermarketId = payload.supermarket_id || ctx?.supermarketId;
+    const finalBranchId = payload.branch_id || ctx?.branchId;
+    const finalCashierId = payload.cashier_id || ctx?.userId || '00000000-0000-0000-0000-000000000000';
 
     if (payload.paymentMethod === 'credit' && payload.customer) {
       const currentDebt = payload.customer.balance ?? payload.customer.current_debt ?? 0;
@@ -49,9 +55,9 @@ export const saleService = {
       .from('sales')
       .insert([
         {
-          supermarket_id: payload.supermarket_id,
-          branch_id: payload.branch_id,
-          cashier_id: payload.cashier_id,
+          supermarket_id: finalSupermarketId,
+          branch_id: finalBranchId,
+          cashier_id: finalCashierId,
           customer_id: payload.customer?.id,
           total_amount: payload.netAmount || payload.totalAmount,
           discount_amount: payload.discountAmount,
@@ -78,8 +84,8 @@ export const saleService = {
         subtotal: itemSubtotal,
         discount: item.discount,
         tax: taxVal,
-        supermarket_id: payload.supermarket_id,
-        branch_id: payload.branch_id,
+        supermarket_id: finalSupermarketId,
+        branch_id: finalBranchId,
       };
     });
 
@@ -90,8 +96,8 @@ export const saleService = {
     for (const item of payload.cartItems) {
       await supabase.from('stock_transactions').insert([
         {
-          supermarket_id: payload.supermarket_id,
-          branch_id: payload.branch_id,
+          supermarket_id: finalSupermarketId,
+          branch_id: finalBranchId,
           product_id: item.product.id,
           type: 'out',
           quantity: item.quantity,
@@ -105,8 +111,8 @@ export const saleService = {
     if (payload.paymentMethod === 'credit' && payload.customer) {
       await supabase.from('customer_credits').insert([
         {
-          supermarket_id: payload.supermarket_id,
-          branch_id: payload.branch_id,
+          supermarket_id: finalSupermarketId,
+          branch_id: finalBranchId,
           customer_id: payload.customer.id,
           type: 'charge',
           amount: payload.netAmount,

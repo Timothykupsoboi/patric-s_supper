@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Supplier } from '@/types';
+import { authService } from './authService';
 
 export const supplierService = {
   async getSuppliers(): Promise<Supplier[]> {
@@ -20,12 +21,13 @@ export const supplierService = {
 
   async createSupplier(supplier: Partial<Supplier>): Promise<Supplier> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const { data, error } = await supabase
       .from('suppliers')
       .insert([
         {
-          supermarket_id: supplier.supermarket_id,
-          branch_id: supplier.branch_id,
+          supermarket_id: supplier.supermarket_id || ctx?.supermarketId,
+          branch_id: supplier.branch_id || ctx?.branchId,
           name: supplier.name,
           contact_person: supplier.contact_person,
           phone: supplier.phone,

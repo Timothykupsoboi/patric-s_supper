@@ -160,14 +160,15 @@ export const authService = {
     if (error) throw error;
 
     if (data.user) {
+      const ctx = await this.getCurrentUserContext();
       await supabase.from('users').insert([
         {
           id: data.user.id,
           name: params.name,
           email: params.email,
           role: params.role || 'cashier',
-          supermarket_id: params.supermarket_id || '00000000-0000-0000-0000-000000000001',
-          branch_id: params.branch_id || undefined,
+          supermarket_id: params.supermarket_id || ctx?.supermarketId,
+          branch_id: params.branch_id || ctx?.branchId || undefined,
           is_active: true,
         },
       ]);
@@ -216,6 +217,42 @@ export const authService = {
 
     if (error) return null;
     return data;
+  },
+
+  async getCurrentUserContext(): Promise<{
+    userId: string;
+    supermarketId?: string;
+    branchId?: string;
+    role?: UserRole;
+  } | null> {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return null;
+
+    const profile = await this.getUserProfile(session.user.id);
+    if (!profile) return null;
+
+    let branchId = profile.branch_id;
+    if (!branchId && profile.supermarket_id) {
+      const { data: defaultBranch } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('supermarket_id', profile.supermarket_id)
+        .eq('deleted', false)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (defaultBranch) {
+        branchId = defaultBranch.id;
+      }
+    }
+
+    return {
+      userId: profile.id,
+      supermarketId: profile.supermarket_id,
+      branchId: branchId,
+      role: profile.role,
+    };
   },
 
   getRoleCategory(role: UserRole | string): UserRoleCategory {

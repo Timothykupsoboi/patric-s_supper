@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { authService } from './authService';
 
 export interface Branch {
   id: string;
@@ -12,27 +13,37 @@ export interface Branch {
 }
 
 export const branchService = {
-  async getBranches(supermarketId: string = '00000000-0000-0000-0000-000000000001'): Promise<Branch[]> {
+  async getBranches(supermarketId?: string): Promise<Branch[]> {
     const supabase = createClient();
-    const { data, error } = await supabase
+    const ctx = await authService.getCurrentUserContext();
+    const targetSupermarketId = supermarketId && supermarketId !== '00000000-0000-0000-0000-000000000001'
+      ? supermarketId
+      : ctx?.supermarketId || supermarketId;
+
+    let query = supabase
       .from('branches')
       .select('*')
-      .eq('supermarket_id', supermarketId)
       .eq('deleted', false)
       .order('name', { ascending: true });
 
+    if (targetSupermarketId) {
+      query = query.eq('supermarket_id', targetSupermarketId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   },
 
   async createBranch(branch: Partial<Branch>): Promise<Branch> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const { data, error } = await supabase
       .from('branches')
       .insert([
         {
           id: crypto.randomUUID(),
-          supermarket_id: branch.supermarket_id,
+          supermarket_id: branch.supermarket_id || ctx?.supermarketId,
           name: branch.name,
           location: branch.location || 'HQ',
         },

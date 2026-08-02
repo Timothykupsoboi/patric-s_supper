@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Expense } from '@/types';
+import { authService } from './authService';
 
 export const expenseService = {
   async getExpenses(): Promise<Expense[]> {
@@ -21,6 +22,7 @@ export const expenseService = {
 
   async createExpense(expense: Partial<Expense>): Promise<Expense> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const validCategories = ['rent', 'electricity', 'water', 'transport', 'salary', 'maintenance', 'internet', 'other'];
     const catInput = (expense.category || 'other').toLowerCase();
     const finalCategory = validCategories.includes(catInput) ? catInput : 'other';
@@ -29,8 +31,8 @@ export const expenseService = {
       .from('expenses')
       .insert([
         {
-          supermarket_id: expense.supermarket_id,
-          branch_id: expense.branch_id,
+          supermarket_id: expense.supermarket_id || ctx?.supermarketId,
+          branch_id: expense.branch_id || ctx?.branchId,
           category: finalCategory,
           amount: expense.amount || 0,
           description: expense.title || expense.description || 'Operational Expense',

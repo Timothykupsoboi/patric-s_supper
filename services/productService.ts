@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Product, Category } from '@/types';
+import { authService } from './authService';
 
 export const productService = {
   async getProducts(): Promise<Product[]> {
@@ -33,8 +34,30 @@ export const productService = {
     return data || [];
   },
 
+  async createCategory(category: Partial<Category>): Promise<Category> {
+    const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
+    const payload = {
+      name: category.name,
+      description: category.description,
+      supermarket_id: category.supermarket_id || ctx?.supermarketId,
+      branch_id: category.branch_id || ctx?.branchId,
+    };
+
+    const { data, error } = await supabase
+      .from('categories')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   async createProduct(product: Partial<Product>): Promise<Product> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
+
     const payload: Record<string, unknown> = {
       name: product.name,
       sku: product.sku || `SKU-${Date.now().toString().slice(-6)}`,
@@ -45,16 +68,18 @@ export const productService = {
       current_stock: product.current_stock ?? product.stock_quantity ?? 0,
       minimum_stock: product.minimum_stock ?? product.reorder_level ?? 5,
       tax_rate: product.tax_rate ?? product.vat_rate ?? 16,
+      supermarket_id: product.supermarket_id || ctx?.supermarketId,
+      branch_id: product.branch_id || ctx?.branchId,
     };
 
+    if (product.category_id && product.category_id.trim() !== '') {
+      payload.category_id = product.category_id;
+    }
     if (product.supplier_id && product.supplier_id.trim() !== '') {
       payload.supplier_id = product.supplier_id;
     }
     if (product.expiry_date && product.expiry_date.trim() !== '') {
       payload.expiry_date = product.expiry_date;
-    }
-    if (product.supermarket_id && product.supermarket_id.trim() !== '') {
-      payload.supermarket_id = product.supermarket_id;
     }
     if (product.image_url && product.image_url.trim() !== '') {
       payload.image_url = product.image_url;
