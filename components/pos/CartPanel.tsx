@@ -49,11 +49,11 @@ export function CartPanel({ onOpenPayment, onSelectCustomer }: CartPanelProps) {
               <div>
                 <p className="text-xs font-extrabold text-slate-900 truncate">{customer.name}</p>
                 <div className="flex items-center space-x-2 text-[10px]">
-                  <span className={customer.current_debt > 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'}>
-                    Debt: KES {customer.current_debt.toFixed(2)}
+                  <span className={(customer.balance ?? customer.current_debt ?? 0) > 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'}>
+                    Debt: KES {(customer.balance ?? customer.current_debt ?? 0).toFixed(2)}
                   </span>
                   <span className="text-slate-400">|</span>
-                  <span className="text-slate-500">Limit: KES {customer.borrow_limit.toFixed(2)}</span>
+                  <span className="text-slate-500">Limit: KES {(customer.credit_limit ?? customer.borrow_limit ?? 5000).toFixed(2)}</span>
                 </div>
               </div>
             ) : (

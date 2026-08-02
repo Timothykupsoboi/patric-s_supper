@@ -209,8 +209,8 @@ export default function POSPage() {
                   <div>
                     <div className="flex justify-between items-start mb-1">
                       <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{product.sku || 'ITEM'}</span>
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${product.stock_quantity <= 5 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {product.stock_quantity} left
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${(product.current_stock ?? product.stock_quantity ?? 0) <= 5 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {product.current_stock ?? product.stock_quantity ?? 0} left
                       </span>
                     </div>
                     <h3 className="font-extrabold text-xs text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
@@ -307,10 +307,10 @@ export default function POSPage() {
                   <p className="text-[10px] text-slate-500">{cust.phone || 'No phone recorded'}</p>
                 </div>
                 <div className="text-right text-[11px]">
-                  <p className={cust.current_debt > 0 ? 'text-red-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
-                    Debt: KES {cust.current_debt.toFixed(2)}
+                  <p className={(cust.balance ?? cust.current_debt ?? 0) > 0 ? 'text-red-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
+                    Debt: KES {(cust.balance ?? cust.current_debt ?? 0).toFixed(2)}
                   </p>
-                  <p className="text-slate-400">Borrow Limit: KES {cust.borrow_limit.toFixed(2)}</p>
+                  <p className="text-slate-400">Borrow Limit: KES {(cust.credit_limit ?? cust.borrow_limit ?? 5000).toFixed(2)}</p>
                 </div>
               </button>
             ))}

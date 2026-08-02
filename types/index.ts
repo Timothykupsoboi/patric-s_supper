@@ -1,12 +1,18 @@
 export type UserRole =
   | 'platform_owner'
+  | 'platform_admin'
   | 'super_admin'
   | 'admin'
   | 'owner'
+  | 'branch_manager'
   | 'manager'
-  | 'cashier'
+  | 'inventory_manager'
+  | 'sales_manager'
+  | 'accountant'
+  | 'procurement_officer'
   | 'store_keeper'
-  | 'accountant';
+  | 'customer_service'
+  | 'cashier';
 
 export interface UserProfile {
   id: string;
@@ -61,35 +67,27 @@ export interface Product {
   branch_id?: string;
   category_id?: string;
   supplier_id?: string;
-  name: string;
   sku?: string;
   barcode?: string;
-  qr_code?: string;
-  unit: string;
+  name: string;
+  description?: string;
   buying_price: number;
   selling_price: number;
-  wholesale_price?: number;
-  minimum_price?: number;
+  cost_price?: number;
+  stock_quantity?: number;
   current_stock: number;
   minimum_stock: number;
-  maximum_stock?: number;
-  image_url?: string;
-  description?: string;
-  expiry_date?: string;
+  reorder_level?: number;
   tax_rate: number;
-  discount_rate?: number;
-  location?: string;
+  vat_rate?: number;
+  unit: string;
+  image_url?: string;
+  expiry_date?: string;
+  category?: Category;
   version?: number;
   created_at: string;
   updated_at?: string;
   deleted?: boolean;
-  category?: Category;
-
-  // Non-optional helper fields mapping to schema columns
-  cost_price: number;
-  stock_quantity: number;
-  reorder_level: number;
-  vat_rate: number;
 }
 
 export interface Customer {
@@ -97,25 +95,16 @@ export interface Customer {
   supermarket_id?: string;
   branch_id?: string;
   name: string;
-  phone?: string;
   email?: string;
-  national_id?: string;
+  phone?: string;
   credit_limit: number;
+  borrow_limit?: number;
   balance: number;
-  loyalty_points?: number;
-  notes?: string;
-  birthday?: string;
-  photo_url?: string;
-  group_name?: string;
-  version?: number;
+  current_debt?: number;
+  store_credit?: number;
   created_at: string;
   updated_at?: string;
   deleted?: boolean;
-
-  // Non-optional helper fields mapping to schema columns
-  borrow_limit: number;
-  current_debt: number;
-  store_credit: number;
 }
 
 export interface CustomerCreditLog {
@@ -126,112 +115,9 @@ export interface CustomerCreditLog {
   type: 'charge' | 'payment';
   amount: number;
   description?: string;
-  due_date?: string;
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-
-  // Helper properties
   notes?: string;
   balance_after?: number;
-}
-
-export type PaymentMethod = 'cash' | 'mpesa' | 'card' | 'credit' | 'split';
-export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
-export type HoldStatus = 'active' | 'held' | 'voided' | 'refunded';
-
-export interface SaleItem {
-  id: string;
-  sale_id: string;
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  subtotal: number;
-  discount: number;
-  tax: number;
-  supermarket_id?: string;
-  branch_id?: string;
-  version?: number;
   created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-  product?: Product;
-  product_name?: string;
-  total_price?: number;
-  vat_amount?: number;
-}
-
-export interface Sale {
-  id: string;
-  supermarket_id?: string;
-  branch_id?: string;
-  cashier_id: string;
-  customer_id?: string;
-  total_amount: number;
-  discount_amount: number;
-  tax_amount: number;
-  payment_status: PaymentStatus;
-  payment_method: PaymentMethod;
-  notes?: string;
-  hold_status: HoldStatus;
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-
-  sale_items?: SaleItem[];
-  customer?: Customer;
-  cashier?: UserProfile;
-
-  // Helper properties
-  invoice_number?: string;
-  net_amount?: number;
-  status?: string;
-}
-
-export interface CartItem {
-  product: Product;
-  quantity: number;
-  discount: number;
-}
-
-export interface StockTransaction {
-  id: string;
-  supermarket_id?: string;
-  branch_id?: string;
-  product_id: string;
-  type: 'in' | 'out' | 'adjustment_add' | 'adjustment_sub' | 'transfer_in' | 'transfer_out' | 'damaged' | 'expired';
-  quantity: number;
-  unit_cost: number;
-  reference_id?: string;
-  notes?: string;
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-  product?: Product;
-
-  // Helper properties
-  reason?: string;
-}
-
-export interface Expense {
-  id: string;
-  supermarket_id?: string;
-  branch_id?: string;
-  category: 'rent' | 'electricity' | 'water' | 'transport' | 'salary' | 'maintenance' | 'internet' | 'other';
-  amount: number;
-  description?: string;
-  date: string;
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-
-  // Helper properties
-  title?: string;
-  payment_method?: string;
 }
 
 export interface Supplier {
@@ -242,14 +128,25 @@ export interface Supplier {
   contact_person?: string;
   phone?: string;
   email?: string;
-  outstanding_balance: number;
-  version?: number;
+  outstanding_balance?: number;
+  is_active?: boolean;
   created_at: string;
   updated_at?: string;
   deleted?: boolean;
+}
 
-  // Helper property
-  is_active?: boolean;
+export interface StockTransaction {
+  id: string;
+  supermarket_id?: string;
+  branch_id?: string;
+  product_id: string;
+  type: 'in' | 'out' | 'adjustment' | 'transfer';
+  quantity: number;
+  unit_cost: number;
+  notes?: string;
+  reason?: string;
+  product?: Product;
+  created_at: string;
 }
 
 export interface PurchaseOrder {
@@ -257,35 +154,81 @@ export interface PurchaseOrder {
   supermarket_id?: string;
   branch_id?: string;
   supplier_id: string;
+  order_number?: string;
   total_amount: number;
   status: 'ordered' | 'received' | 'returned';
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-
   supplier?: Supplier;
+  created_at: string;
+}
 
-  // Helper properties
-  order_number?: string;
+export interface Expense {
+  id: string;
+  supermarket_id?: string;
+  branch_id?: string;
+  title: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  notes?: string;
+  description?: string;
+  date?: string;
+  created_at: string;
 }
 
 export interface AuditLog {
   id: string;
   supermarket_id?: string;
   branch_id?: string;
-  user_id: string;
+  user_id?: string;
   action: string;
   table_name?: string;
   record_id?: string;
-  old_values?: Record<string, any>;
-  new_values?: Record<string, any>;
-  version?: number;
-  created_at: string;
-  updated_at?: string;
-  deleted?: boolean;
-
-  // Helper properties
   entity_type?: string;
   entity_id?: string;
+  created_at: string;
+}
+
+export interface SaleItem {
+  id?: string;
+  sale_id?: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  product_name?: string;
+  total_price?: number;
+  product?: Product;
+}
+
+export type PaymentMethod = 'cash' | 'mpesa' | 'card' | 'credit';
+
+export interface Sale {
+  id: string;
+  invoice_number?: string;
+  supermarket_id?: string;
+  branch_id?: string;
+  cashier_id: string;
+  customer_id?: string;
+  total_amount: number;
+  net_amount?: number;
+  discount_amount: number;
+  tax_amount: number;
+  payment_method: PaymentMethod;
+  payment_status: 'paid' | 'unpaid' | 'refunded';
+  hold_status: 'active' | 'held' | 'refunded';
+  status?: string;
+  customer?: Customer;
+  cashier?: UserProfile;
+  sale_items?: SaleItem[];
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  discount: number;
 }

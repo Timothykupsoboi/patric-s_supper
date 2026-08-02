@@ -3,12 +3,18 @@ import { UserProfile, UserRole } from '@/types';
 
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   platform_owner: 100,
+  platform_admin: 95,
   super_admin: 90,
-  admin: 80,
   owner: 85,
+  admin: 80,
+  branch_manager: 65,
   manager: 60,
-  accountant: 40,
-  store_keeper: 30,
+  inventory_manager: 55,
+  sales_manager: 50,
+  accountant: 45,
+  procurement_officer: 40,
+  store_keeper: 35,
+  customer_service: 30,
   cashier: 20,
 };
 
@@ -49,7 +55,6 @@ export const authService = {
     if (error) throw error;
 
     if (data.user) {
-      // Create user profile in users table
       await supabase.from('users').insert([
         {
           id: data.user.id,
