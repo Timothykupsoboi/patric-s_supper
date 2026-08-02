@@ -59,10 +59,11 @@ export const inventoryService = {
 
   async getNearExpiryProducts(daysThreshold: number = 30): Promise<Product[]> {
     const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('products')
       .select('*, category:categories(*)')
       .not('expiry_date', 'is', null)
@@ -70,6 +71,11 @@ export const inventoryService = {
       .eq('deleted', false)
       .order('expiry_date', { ascending: true });
 
+    if (ctx?.supermarketId) {
+      query = query.eq('supermarket_id', ctx.supermarketId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     return (data || []).map((p: any) => ({
@@ -82,12 +88,18 @@ export const inventoryService = {
 
   async getStockTransactions(limit: number = 50): Promise<StockTransaction[]> {
     const supabase = createClient();
-    const { data, error } = await supabase
+    const ctx = await authService.getCurrentUserContext();
+    let query = supabase
       .from('stock_transactions')
       .select('*, product:products(*)')
       .order('created_at', { ascending: false })
       .limit(limit);
 
+    if (ctx?.supermarketId) {
+      query = query.eq('supermarket_id', ctx.supermarketId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     return (data || []).map((tx: any) => ({
@@ -103,12 +115,18 @@ export const inventoryService = {
 
   async getPurchaseOrders(): Promise<PurchaseOrder[]> {
     const supabase = createClient();
-    const { data, error } = await supabase
+    const ctx = await authService.getCurrentUserContext();
+    let query = supabase
       .from('purchases')
       .select('*, supplier:suppliers(*)')
       .eq('deleted', false)
       .order('created_at', { ascending: false });
 
+    if (ctx?.supermarketId) {
+      query = query.eq('supermarket_id', ctx.supermarketId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     return (data || []).map((p: any) => ({

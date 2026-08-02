@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supplierService } from '@/services/supplierService';
 import { inventoryService } from '@/services/inventoryService';
@@ -35,6 +36,26 @@ export default function SuppliersPage() {
     queryKey: ['purchaseOrders'],
     queryFn: () => inventoryService.getPurchaseOrders(),
   });
+
+  // Supabase Realtime Sync for live indicators & counters without page refresh
+  React.useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel('suppliers_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const activePOCount = purchaseOrders.filter((po) => po.status === 'ordered').length;
 
   const createMutation = useMutation({
     mutationFn: (newSup: any) => supplierService.createSupplier(newSup),
@@ -116,7 +137,7 @@ export default function SuppliersPage() {
       <div className="flex space-x-2 border-b border-slate-200 pb-2">
         {[
           { id: 'directory', label: `Vendor Directory (${suppliers.length})`, icon: Truck },
-          { id: 'purchase_orders', label: `Purchase Orders & Deliveries (${purchaseOrders.length})`, icon: PackageCheck },
+          { id: 'purchase_orders', label: `Purchase Orders (${activePOCount})`, icon: PackageCheck },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

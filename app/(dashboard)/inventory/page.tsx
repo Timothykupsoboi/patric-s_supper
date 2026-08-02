@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productService } from '@/services/productService';
 import { inventoryService } from '@/services/inventoryService';
@@ -79,6 +80,37 @@ export default function InventoryPage() {
     queryKey: ['nearExpiry'],
     queryFn: () => inventoryService.getNearExpiryProducts(30),
   });
+
+  // Supabase Realtime Sync for live indicators & counters without page refresh
+  React.useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel('inventory_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['nearExpiry'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['stockTransactions'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  // Live Indicator Calculations
+  const activePOCount = purchaseOrders.filter((po) => po.status === 'ordered').length;
+
+  const expiryWarningProducts = products.filter(
+    (p) => p.expiry_date && getExpiryStatus(p.expiry_date) !== 'safe'
+  );
+  const expiryWarningCount = expiryWarningProducts.length;
 
   const createProductMutation = useMutation({
     mutationFn: (newProd: any) => productService.createProduct(newProd),
@@ -259,8 +291,8 @@ export default function InventoryPage() {
         {[
           { id: 'products', label: `Product Catalog (${products.length})`, icon: Package },
           { id: 'movements', label: 'Stock Movements', icon: ArrowRightLeft },
-          { id: 'purchase_orders', label: `Purchase Orders (${purchaseOrders.length})`, icon: Truck },
-          { id: 'expiry', label: `Expiry Warnings (${expiryProducts.length})`, icon: Calendar },
+          { id: 'purchase_orders', label: `Purchase Orders (${activePOCount})`, icon: Truck },
+          { id: 'expiry', label: `Expiry Warnings (${expiryWarningCount})`, icon: Calendar },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
