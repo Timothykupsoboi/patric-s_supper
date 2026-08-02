@@ -9,12 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { DollarSign, ShoppingBag, AlertTriangle, TrendingUp, ArrowUpRight, Clock, Activity } from 'lucide-react';
+import { DollarSign, ShoppingBag, AlertTriangle, TrendingUp, Calendar, Clock, Activity } from 'lucide-react';
 
 export default function DashboardPage() {
   const { data: metrics, isLoading: isMetricsLoading } = useQuery({
     queryKey: ['salesMetrics'],
     queryFn: () => saleService.getSalesMetrics(),
+  });
+
+  const { data: reportMetrics } = useQuery({
+    queryKey: ['financialReportMetrics'],
+    queryFn: () => saleService.getComprehensiveFinancialReport(),
   });
 
   const { data: recentSales = [], isLoading: isSalesLoading } = useQuery({
@@ -61,27 +66,46 @@ export default function DashboardPage() {
           </div>
           <div className="mt-3 flex items-center text-xs text-emerald-600 font-bold">
             <TrendingUp className="w-3.5 h-3.5 mr-1" />
-            <span>+14.2% vs yesterday</span>
+            <span>Today's active cashier sales</span>
           </div>
         </Card>
 
         <Card className="border-l-4 border-l-emerald-600 hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Completed Orders</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Weekly Revenue (7 Days)</p>
               {isMetricsLoading ? (
-                <Skeleton className="h-8 w-20 mt-2" />
+                <Skeleton className="h-8 w-32 mt-2" />
               ) : (
-                <h2 className="text-2xl font-black text-slate-900 mt-1">{metrics?.todaySales || 0}</h2>
+                <h2 className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(metrics?.weeklyRevenue || 0)}</h2>
               )}
             </div>
             <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-              <ShoppingBag className="w-6 h-6" />
+              <Calendar className="w-6 h-6" />
             </div>
           </div>
           <div className="mt-3 flex items-center text-xs text-slate-500 font-medium">
             <Clock className="w-3.5 h-3.5 mr-1 text-slate-400" />
-            <span>Active cashier register</span>
+            <span>7-day rolling window</span>
+          </div>
+        </Card>
+
+        <Card className="border-l-4 border-l-purple-600 hover:shadow-md transition-shadow">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Revenue (30 Days)</p>
+              {isMetricsLoading ? (
+                <Skeleton className="h-8 w-32 mt-2" />
+              ) : (
+                <h2 className="text-2xl font-black text-purple-900 mt-1">{formatCurrency(metrics?.monthlyRevenue || 0)}</h2>
+              )}
+            </div>
+            <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
+              <ShoppingBag className="w-6 h-6" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center text-xs text-purple-700 font-semibold">
+            <span>Monthly store performance</span>
           </div>
         </Card>
 
@@ -103,27 +127,33 @@ export default function DashboardPage() {
             <span>Items below reorder point</span>
           </div>
         </Card>
+      </div>
 
-        <Card className="border-l-4 border-l-purple-600 hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cloud Engine</p>
-              <h2 className="text-xl font-black text-emerald-600 mt-1">100% Online</h2>
-            </div>
-            <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
-              <ArrowUpRight className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center text-xs text-slate-500 font-medium">
-            <span>Vercel + Supabase Ready</span>
-          </div>
+      {/* Financial Net Profit Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-slate-900 text-white">
+          <p className="text-xs font-bold text-slate-400 uppercase">Gross Sales Revenue</p>
+          <h3 className="text-2xl font-black text-blue-400 mt-1">{formatCurrency(reportMetrics?.grossSales || 0)}</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Discounts: -{formatCurrency(reportMetrics?.totalDiscounts || 0)}</p>
+        </Card>
+
+        <Card className="bg-slate-900 text-white">
+          <p className="text-xs font-bold text-slate-400 uppercase">Operational Expenses</p>
+          <h3 className="text-2xl font-black text-red-400 mt-1">{formatCurrency(reportMetrics?.totalExpenses || 0)}</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Store bills & costs</p>
+        </Card>
+
+        <Card className="bg-slate-900 text-white border-2 border-emerald-500">
+          <p className="text-xs font-bold text-emerald-400 uppercase">Net Profit</p>
+          <h3 className="text-2xl font-black text-emerald-400 mt-1">{formatCurrency(reportMetrics?.netProfit || 0)}</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Calculated after COGS & Expenses</p>
         </Card>
       </div>
 
       {/* Interactive Sales Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Sales Revenue Performance Trend (Today)</CardTitle>
+          <CardTitle>Sales Revenue Performance Trend</CardTitle>
         </CardHeader>
         <SalesChart />
       </Card>

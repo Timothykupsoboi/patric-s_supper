@@ -86,7 +86,7 @@ export const saleService = {
     const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
     if (itemsError) throw itemsError;
 
-    // Trigger stock transactions (type: 'out') -> DB trigger updates products.current_stock
+    // Trigger stock transactions (type: 'out')
     for (const item of payload.cartItems) {
       await supabase.from('stock_transactions').insert([
         {
@@ -101,7 +101,7 @@ export const saleService = {
       ]);
     }
 
-    // Trigger customer credit charge if credit sale -> DB trigger updates customers.balance
+    // Trigger customer credit charge if credit sale
     if (payload.paymentMethod === 'credit' && payload.customer) {
       await supabase.from('customer_credits').insert([
         {
@@ -127,7 +127,6 @@ export const saleService = {
   async refundSale(saleId: string): Promise<Sale> {
     const supabase = createClient();
 
-    // 1. Fetch sale with sale_items
     const { data: sale, error: fetchErr } = await supabase
       .from('sales')
       .select('*, sale_items(*)')
@@ -136,7 +135,6 @@ export const saleService = {
 
     if (fetchErr || !sale) throw fetchErr || new Error('Sale transaction not found');
 
-    // 2. Update sale status to refunded
     const { data: updatedSale, error: updateErr } = await supabase
       .from('sales')
       .update({
@@ -150,7 +148,6 @@ export const saleService = {
 
     if (updateErr) throw updateErr;
 
-    // 3. Restock inventory items (stock_transactions type: 'in')
     for (const item of sale.sale_items || []) {
       await supabase.from('stock_transactions').insert([
         {
@@ -165,7 +162,6 @@ export const saleService = {
       ]);
     }
 
-    // 4. Reverse customer debt if credit sale
     if (sale.payment_method === 'credit' && sale.customer_id) {
       await supabase.from('customer_credits').insert([
         {
@@ -206,24 +202,51 @@ export const saleService = {
     }));
   },
 
-  async getSalesMetrics(): Promise<{ todaySales: number; todayRevenue: number; totalOrders: number }> {
+  async getSalesMetrics(): Promise<{
+    todaySales: number;
+    todayRevenue: number;
+    weeklyRevenue: number;
+    monthlyRevenue: number;
+    totalOrders: number;
+  }> {
     const supabase = createClient();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const monthStart = new Date();
+    monthStart.setMonth(monthStart.getMonth() - 30);
+
+    const { data: todaySalesData } = await supabase
       .from('sales')
       .select('total_amount')
       .gte('created_at', todayStart.toISOString())
       .eq('deleted', false);
 
-    if (error) throw error;
+    const { data: weekSalesData } = await supabase
+      .from('sales')
+      .select('total_amount')
+      .gte('created_at', weekStart.toISOString())
+      .eq('deleted', false);
 
-    const todayRevenue = (data || []).reduce((acc: number, curr: { total_amount: number }) => acc + (curr.total_amount || 0), 0);
+    const { data: monthSalesData } = await supabase
+      .from('sales')
+      .select('total_amount')
+      .gte('created_at', monthStart.toISOString())
+      .eq('deleted', false);
+
+    const todayRevenue = (todaySalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
+    const weeklyRevenue = (weekSalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
+    const monthlyRevenue = (monthSalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
+
     return {
-      todaySales: (data || []).length,
+      todaySales: (todaySalesData || []).length,
       todayRevenue,
-      totalOrders: (data || []).length,
+      weeklyRevenue,
+      monthlyRevenue,
+      totalOrders: (monthSalesData || []).length,
     };
   },
 

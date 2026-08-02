@@ -4,11 +4,15 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { saleService } from '@/services/saleService';
 import { productService } from '@/services/productService';
+import { customerService } from '@/services/customerService';
+import { supplierService } from '@/services/supplierService';
+import { employeeService } from '@/services/employeeService';
+import { expenseService } from '@/services/expenseService';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Download, DollarSign, PieChart as PieIcon, FileText, PackageCheck } from 'lucide-react';
+import { Download, DollarSign, FileText, PackageCheck, Users, Truck, UserCheck, Printer } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,9 +24,11 @@ import {
 } from 'recharts';
 
 export default function ReportsPage() {
-  const [reportTab, setReportTab] = useState<'financial' | 'inventory_valuation' | 'sales_register'>('financial');
+  const [reportTab, setReportTab] = useState<
+    'financial' | 'inventory_valuation' | 'sales_register' | 'customers' | 'suppliers' | 'employees'
+  >('financial');
 
-  const { data: sales = [], isLoading: isSalesLoading } = useQuery({
+  const { data: sales = [] } = useQuery({
     queryKey: ['recentSales'],
     queryFn: () => saleService.getRecentSales(50),
   });
@@ -37,6 +43,21 @@ export default function ReportsPage() {
     queryFn: () => productService.getProducts(),
   });
 
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customerService.getCustomers(),
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => supplierService.getSuppliers(),
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeeService.getEmployees(),
+  });
+
   // Chart dataset
   const chartData = [
     { name: 'Net Sales', amount: reportMetrics?.netSales || 0, fill: '#2563eb' },
@@ -44,6 +65,11 @@ export default function ReportsPage() {
     { name: 'Expenses', amount: reportMetrics?.totalExpenses || 0, fill: '#ef4444' },
     { name: 'Net Profit', amount: reportMetrics?.netProfit || 0, fill: '#10b981' },
   ];
+
+  // Print PDF Handler
+  const handlePrintPDF = () => {
+    window.print();
+  };
 
   // CSV Export Handlers
   const exportSalesCSV = () => {
@@ -118,10 +144,14 @@ export default function ReportsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Financial & Valuation Analytics</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Audit gross revenue, COGS, tax calculations, net profit, and inventory valuation</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Financial & Executive Analytics Reports</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Audit gross revenue, COGS, tax calculations, net profit, inventory valuation, customers, and staff performance</p>
         </div>
         <div className="flex space-x-2 mt-3 sm:mt-0">
+          <Button onClick={handlePrintPDF} variant="outline" className="text-xs font-bold border-slate-300">
+            <Printer className="w-4 h-4 mr-1.5 text-slate-600" />
+            Print PDF Report
+          </Button>
           <Button onClick={exportPnLCSV} variant="outline" className="text-xs font-bold border-slate-300">
             <Download className="w-4 h-4 mr-1.5 text-slate-600" />
             Export P&L CSV
@@ -134,11 +164,14 @@ export default function ReportsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-2 border-b border-slate-200 pb-2">
+      <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto">
         {[
           { id: 'financial', label: 'Profit & Loss (P&L)', icon: DollarSign },
           { id: 'inventory_valuation', label: 'Inventory Valuation', icon: PackageCheck },
           { id: 'sales_register', label: 'Sales Register Audit', icon: FileText },
+          { id: 'customers', label: 'Debtors & Customers', icon: Users },
+          { id: 'suppliers', label: 'Suppliers & Vendors', icon: Truck },
+          { id: 'employees', label: 'Staff Accounts', icon: UserCheck },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = reportTab === tab.id;
@@ -266,7 +299,7 @@ export default function ReportsPage() {
       {reportTab === 'sales_register' && (
         <Card>
           <CardHeader>
-            <CardTitle>Completed Sales Register</CardTitle>
+            <CardTitle>Completed Sales Register Audit</CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -291,6 +324,101 @@ export default function ReportsPage() {
                     <td className="p-3 text-red-600">-{formatCurrency(s.discount_amount)}</td>
                     <td className="p-3">{formatCurrency(s.tax_amount)}</td>
                     <td className="p-3 text-right font-black text-slate-900">{formatCurrency(s.net_amount ?? s.total_amount ?? 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 4: Customers Report */}
+      {reportTab === 'customers' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Debtors Ledger Summary</CardTitle>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 font-bold uppercase border-b border-slate-200 text-slate-700">
+                <tr>
+                  <th className="p-3">Customer Name</th>
+                  <th className="p-3">Phone</th>
+                  <th className="p-3">Credit Limit</th>
+                  <th className="p-3 text-right">Outstanding Debt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {customers.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-extrabold text-slate-900">{c.name}</td>
+                    <td className="p-3 text-slate-500">{c.phone || '-'}</td>
+                    <td className="p-3 font-bold text-slate-700">{formatCurrency(c.credit_limit ?? c.borrow_limit ?? 5000)}</td>
+                    <td className="p-3 text-right font-black text-red-600">{formatCurrency(c.balance ?? c.current_debt ?? 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 5: Suppliers Report */}
+      {reportTab === 'suppliers' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Supplier Directory & Vendor Summary</CardTitle>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 font-bold uppercase border-b border-slate-200 text-slate-700">
+                <tr>
+                  <th className="p-3">Supplier Name</th>
+                  <th className="p-3">Contact Person</th>
+                  <th className="p-3">Phone</th>
+                  <th className="p-3 text-right">Outstanding Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {suppliers.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-extrabold text-slate-900">{s.name}</td>
+                    <td className="p-3 text-slate-600">{s.contact_person || '-'}</td>
+                    <td className="p-3 font-mono text-slate-500">{s.phone || '-'}</td>
+                    <td className="p-3 text-right font-black text-slate-900">{formatCurrency(s.outstanding_balance || 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 6: Employees Report */}
+      {reportTab === 'employees' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Staff Accounts Audit Summary</CardTitle>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 font-bold uppercase border-b border-slate-200 text-slate-700">
+                <tr>
+                  <th className="p-3">Staff Name</th>
+                  <th className="p-3">Email Address</th>
+                  <th className="p-3">Assigned Role</th>
+                  <th className="p-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {employees.map((e) => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-extrabold text-slate-900">{e.name}</td>
+                    <td className="p-3 text-slate-500">{e.email}</td>
+                    <td className="p-3 uppercase font-extrabold text-blue-600">{e.role}</td>
+                    <td className="p-3 text-right">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">Active</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
