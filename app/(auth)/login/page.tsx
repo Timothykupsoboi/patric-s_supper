@@ -2,12 +2,16 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
+import { authService } from '@/services/authService';
 import { Store, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setUserProfile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,12 +23,13 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Demo authentication redirect
-      setTimeout(() => {
-        router.push('/pos');
-      }, 800);
+      const res = await authService.login(email, password);
+      if (res.profile) {
+        setUserProfile(res.profile);
+      }
+      router.push('/dashboard');
     } catch (err: any) {
-      setError('Login failed. Please check your credentials.');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -58,7 +63,12 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-semibold text-slate-300">Password</label>
+              <Link href="/forgot-password" className="text-xs text-blue-400 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <Lock className="w-5 h-5 text-slate-500 absolute left-3 top-2.5" />
               <Input
@@ -72,7 +82,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {error && <p className="text-xs text-red-400 text-center font-bold">{error}</p>}
 
           <Button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 font-bold" disabled={loading}>
             {loading ? 'Authenticating...' : 'Sign In to Register'}

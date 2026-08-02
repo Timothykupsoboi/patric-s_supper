@@ -26,6 +26,46 @@ export const authService = {
     return { session: data.session, user: data.user, profile };
   },
 
+  async register(params: {
+    email: string;
+    password: string;
+    name: string;
+    role?: UserRole;
+    supermarket_id?: string;
+    branch_id?: string;
+  }) {
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signUp({
+      email: params.email,
+      password: params.password,
+      options: {
+        data: {
+          name: params.name,
+          role: params.role || 'cashier',
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    if (data.user) {
+      // Create user profile in users table
+      await supabase.from('users').insert([
+        {
+          id: data.user.id,
+          name: params.name,
+          email: params.email,
+          role: params.role || 'cashier',
+          supermarket_id: params.supermarket_id || '00000000-0000-0000-0000-000000000001',
+          branch_id: params.branch_id || undefined,
+          is_active: true,
+        },
+      ]);
+    }
+
+    return data;
+  },
+
   async logout() {
     const supabase = createClient();
     const { error } = await supabase.auth.signOut();
