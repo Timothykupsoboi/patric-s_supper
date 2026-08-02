@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { UserProfile } from '@/types';
+import { authService } from './authService';
 
 export interface RoleOption {
   role_name: string;
@@ -183,6 +184,97 @@ export const employeeService = {
       .from('users')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async createEmployee(payload: {
+    name: string;
+    email: string;
+    password?: string;
+    role: string;
+    branch_id?: string;
+    supermarket_id?: string;
+    pin?: string;
+    phone?: string;
+  }): Promise<UserProfile> {
+    const supabase = createClient();
+    const ctx = await authService.getCurrentUserContext();
+    const targetSupermarketId = payload.supermarket_id || ctx?.supermarketId;
+
+    if (!targetSupermarketId) {
+      throw new Error('Supermarket tenant context is required to create an employee.');
+    }
+
+    // Map UI roles to valid database check constraint values:
+    // ALLOWED: ['platform_owner', 'super_admin', 'admin', 'owner', 'manager', 'cashier', 'store_keeper', 'accountant']
+    const roleMapping: Record<string, string> = {
+      supermarket_owner: 'super_admin',
+      branch_manager: 'manager',
+      supervisor: 'manager',
+      sales_manager: 'manager',
+      inventory_manager: 'store_keeper',
+      procurement_officer: 'store_keeper',
+      customer_service: 'cashier',
+    };
+
+    const dbRole = roleMapping[payload.role] || payload.role;
+    const validDbRoles = ['platform_owner', 'super_admin', 'admin', 'owner', 'manager', 'cashier', 'store_keeper', 'accountant'];
+    const finalRole = validDbRoles.includes(dbRole) ? dbRole : 'cashier';
+
+    let defaultBranchId = payload.branch_id || ctx?.branchId;
+    if (!defaultBranchId && targetSupermarketId) {
+      const { data: bData } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('supermarket_id', targetSupermarketId)
+        .eq('deleted', false)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (bData) defaultBranchId = bData.id;
+    }
+
+    const employeeId = crypto.randomUUID();
+
+    // 1. Create Supabase Auth user if password provided
+    if (payload.email && payload.password) {
+      try {
+        await supabase.auth.signUp({
+          email: payload.email,
+          password: payload.password,
+          options: {
+            data: {
+              name: payload.name,
+              role: finalRole,
+              supermarket_id: targetSupermarketId,
+            },
+          },
+        });
+      } catch (authErr) {
+        console.warn('Auth user signup warning (creating database profile):', authErr);
+      }
+    }
+
+    // 2. Insert into users table
+    const { data, error } = await supabase
+      .from('users')
+      .insert([
+        {
+          id: employeeId,
+          supermarket_id: targetSupermarketId,
+          branch_id: defaultBranchId || undefined,
+          name: payload.name,
+          email: payload.email,
+          role: finalRole,
+          phone: payload.phone || null,
+          pin: payload.pin || Math.floor(1000 + Math.random() * 9000).toString(),
+          is_active: true,
+        },
+      ])
       .select()
       .single();
 

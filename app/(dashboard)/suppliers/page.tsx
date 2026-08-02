@@ -18,8 +18,9 @@ export default function SuppliersPage() {
   const [activeTab, setActiveTab] = useState<'directory' | 'purchase_orders'>('directory');
   const [isOpen, setIsOpen] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Form State for New Supplier
+  // Form State for Supplier Creation / Edit
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
@@ -66,7 +67,6 @@ export default function SuppliersPage() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
-      supermarket_id: '00000000-0000-0000-0000-000000000001',
       name,
       contact_person: contactPerson,
       phone,
@@ -87,6 +87,16 @@ export default function SuppliersPage() {
       },
     });
   };
+
+  const filteredSuppliers = suppliers.filter((sup) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      sup.name.toLowerCase().includes(q) ||
+      (sup.contact_person && sup.contact_person.toLowerCase().includes(q)) ||
+      (sup.phone && sup.phone.includes(q)) ||
+      (sup.email && sup.email.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -129,21 +139,41 @@ export default function SuppliersPage() {
 
       {/* Tab 1: Directory */}
       {activeTab === 'directory' && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Supplier Name</th>
-                  <th className="p-3">Contact Person</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {suppliers.map((sup) => (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+            <Input
+              placeholder="Search vendor name, contact person, phone, email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-md text-xs font-medium"
+            />
+            <span className="text-xs text-slate-400 font-bold pr-2">
+              Showing {filteredSuppliers.length} of {suppliers.length} Suppliers
+            </span>
+          </div>
+
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">Supplier Name</th>
+                    <th className="p-3">Contact Person</th>
+                    <th className="p-3">Phone</th>
+                    <th className="p-3">Email</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSuppliers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-400 font-medium">
+                        No suppliers found. Click "+ Add Supplier Profile" to register a new vendor.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSuppliers.map((sup) => (
                   <tr key={sup.id} className="hover:bg-slate-50">
                     <td className="p-3 font-extrabold text-slate-900">{sup.name}</td>
                     <td className="p-3 text-slate-600">{sup.contact_person || '-'}</td>
@@ -171,12 +201,14 @@ export default function SuppliersPage() {
                       </Button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )}
 
       {/* Tab 2: Purchase Orders & Deliveries */}
       {activeTab === 'purchase_orders' && (

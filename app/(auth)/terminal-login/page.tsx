@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 export default function TerminalLoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { user, loading, logout, logoutAccount } = useAuth();
+  const { user, loading, logout, logoutAccount, setTerminalEmployee } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [pin, setPin] = useState('');
@@ -93,10 +93,7 @@ export default function TerminalLoginPage() {
 
         if (verifiedStaff) {
           dispatch(unlockTerminal());
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('terminal_unlocked', 'true');
-            sessionStorage.setItem('terminal_unlocked_user', verifiedStaff.id);
-          }
+          setTerminalEmployee(verifiedStaff);
 
           // Navigate based on employee role
           const role = verifiedStaff.role;

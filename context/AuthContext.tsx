@@ -4,14 +4,17 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UserProfile, UserRole } from '@/types';
 import { authService, UserRoleCategory, PermissionKey } from '@/services/authService';
+import { auditService } from '@/services/auditService';
 
 interface AuthContextType {
   user: UserProfile | null;
+  accountOwner: UserProfile | null;
   roleCategory: UserRoleCategory | null;
   loading: boolean;
   logout: () => Promise<void>;
   logoutAccount: () => Promise<void>;
   lockTerminal: () => void;
+  setTerminalEmployee: (emp: UserProfile) => void;
   hasPermission: (permission: PermissionKey | UserRole) => boolean;
   refreshProfile: () => Promise<void>;
   setUserProfile: (profile: UserProfile | null) => void;
@@ -19,21 +22,26 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  accountOwner: null,
   roleCategory: null,
   loading: true,
   logout: async () => {},
   logoutAccount: async () => {},
   lockTerminal: () => {},
+  setTerminalEmployee: () => {},
   hasPermission: () => false,
   refreshProfile: async () => {},
   setUserProfile: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [accountOwner, setAccountOwner] = useState<UserProfile | null>(null);
+  const [terminalUser, setTerminalUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const roleCategory: UserRoleCategory | null = user ? authService.getRoleCategory(user.role) : null;
+  // Active user in context is active terminal employee if unlocked, else account owner
+  const activeUser = terminalUser || accountOwner;
+  const roleCategory: UserRoleCategory | null = activeUser ? authService.getRoleCategory(activeUser.role) : null;
 
   const refreshProfile = async () => {
     try {
@@ -43,9 +51,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile) {
           if (profile.is_active === false) {
             await authService.logout();
-            setUser(null);
+            setAccountOwner(null);
+            setTerminalUser(null);
           } else {
-            setUser(profile);
+            setAccountOwner(profile);
+            
+            // Restore active terminal session employee if available
+            if (typeof window !== 'undefined') {
+              const isUnlocked = sessionStorage.getItem('terminal_unlocked') === 'true';
+              const storedEmpStr = sessionStorage.getItem('terminal_active_employee_data');
+              if (isUnlocked && storedEmpStr) {
+                try {
+                  const empData = JSON.parse(storedEmpStr);
+                  setTerminalUser(empData);
+                } catch {
+                  setTerminalUser(profile);
+                }
+              }
+            }
           }
         }
       }
@@ -66,13 +89,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile) {
           if (profile.is_active === false) {
             await authService.logout();
-            setUser(null);
+            setAccountOwner(null);
+            setTerminalUser(null);
           } else {
-            setUser(profile);
+            setAccountOwner(profile);
           }
         }
       } else if (event === 'SIGNED_OUT') {
-        setUser(null);
+        setAccountOwner(null);
+        setTerminalUser(null);
       }
       setLoading(false);
     });
@@ -82,11 +107,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const setTerminalEmployee = (emp: UserProfile) => {
+    setTerminalUser(emp);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('terminal_unlocked', 'true');
+        sessionStorage.setItem('terminal_unlocked_user', emp.id);
+        sessionStorage.setItem('terminal_active_employee_data', JSON.stringify(emp));
+      } catch {}
+    }
+    // Audit Terminal Session Unlock
+    auditService.logAction(
+      'TERMINAL_UNLOCK',
+      'terminal_session',
+      emp.id,
+      { employee_name: emp.name, role: emp.role, branch_id: emp.branch_id },
+      emp.id,
+      emp.supermarket_id
+    );
+  };
+
   const lockTerminal = () => {
+    if (terminalUser || accountOwner) {
+      const activeId = terminalUser?.id || accountOwner?.id;
+      const smId = terminalUser?.supermarket_id || accountOwner?.supermarket_id;
+      if (activeId && smId) {
+        auditService.logAction(
+          'TERMINAL_LOCK',
+          'terminal_session',
+          activeId,
+          { locked_at: new Date().toISOString() },
+          activeId,
+          smId
+        );
+      }
+    }
+
+    setTerminalUser(null);
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem('terminal_unlocked');
         sessionStorage.removeItem('terminal_unlocked_user');
+        sessionStorage.removeItem('terminal_active_employee_data');
       } catch {}
       window.location.replace('/terminal-login');
     }
@@ -98,7 +160,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('Logout fallback:', e);
     } finally {
-      setUser(null);
+      setAccountOwner(null);
+      setTerminalUser(null);
       if (typeof window !== 'undefined') {
         try {
           localStorage.clear();
@@ -110,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    if (user?.role === 'platform_owner') {
+    if (activeUser?.role === 'platform_owner') {
       await logoutAccount();
     } else {
       lockTerminal();
@@ -118,25 +181,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const hasPermission = (permission: PermissionKey | UserRole): boolean => {
-    if (!user) return false;
+    if (!activeUser) return false;
     if (typeof permission === 'string' && permission.includes('.')) {
-      return authService.hasPermission(user.role, permission as PermissionKey);
+      return authService.hasPermission(activeUser.role, permission as PermissionKey);
     }
-    return authService.hasRolePermission(user.role, permission as UserRole);
+    return authService.hasRolePermission(activeUser.role, permission as UserRole);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: activeUser,
+        accountOwner,
         roleCategory,
         loading,
         logout,
         logoutAccount,
         lockTerminal,
+        setTerminalEmployee,
         hasPermission,
         refreshProfile,
-        setUserProfile: (profile) => setUser(profile),
+        setUserProfile: (profile) => setAccountOwner(profile),
       }}
     >
       {children}
