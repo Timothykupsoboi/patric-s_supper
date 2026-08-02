@@ -1,0 +1,225 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { platformAdminService, CreateSupermarketPayload } from '@/services/platformAdminService';
+import { Dialog } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Store, UserCheck, MapPin, Globe, CreditCard, Building } from 'lucide-react';
+
+interface CreateSupermarketModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketModalProps) {
+  const queryClient = useQueryClient();
+
+  const [name, setName] = useState('');
+  const [regNumber, setRegNumber] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
+  const [country, setCountry] = useState('Kenya');
+  const [currency, setCurrency] = useState('KES');
+  const [timezone, setTimezone] = useState('Africa/Nairobi');
+  const [address, setAddress] = useState('');
+  const [plan, setPlan] = useState('starter');
+  const [trialDays, setTrialDays] = useState('14');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [defaultBranch, setDefaultBranch] = useState('Main Branch');
+
+  const createMutation = useMutation({
+    mutationFn: (payload: CreateSupermarketPayload) =>
+      platformAdminService.createSupermarketTenant(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platformSupermarketsList'] });
+      queryClient.invalidateQueries({ queryKey: ['platformMetrics'] });
+      onClose();
+      // Reset form
+      setName('');
+      setRegNumber('');
+      setOwnerName('');
+      setOwnerEmail('');
+      setOwnerPhone('');
+      setAddress('');
+      setLogoUrl('');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createMutation.mutate({
+      name,
+      registration_number: regNumber,
+      owner_name: ownerName,
+      owner_email: ownerEmail,
+      owner_phone: ownerPhone,
+      country,
+      currency,
+      timezone,
+      business_address: address,
+      subscription_plan: plan,
+      trial_period_days: parseInt(trialDays) || 14,
+      logo_url: logoUrl,
+      default_branch_name: defaultBranch,
+    });
+  };
+
+  return (
+    <Dialog isOpen={isOpen} onClose={onClose} title="Register New Supermarket Tenant Organization">
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {/* Section 1: Supermarket Organization */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+          <p className="font-extrabold text-white flex items-center space-x-2">
+            <Store className="w-4 h-4 text-indigo-400" />
+            <span>1. Organization Details</span>
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Supermarket Business Name"
+              placeholder="e.g. Westlands Fresh Mart"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+              required
+            />
+            <Input
+              label="Business Registration # (Optional)"
+              placeholder="e.g. REG-2026-994"
+              value={regNumber}
+              onChange={(e) => setRegNumber(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Default Branch Name"
+              placeholder="e.g. Main Branch"
+              value={defaultBranch}
+              onChange={(e) => setDefaultBranch(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+              required
+            />
+            <Input
+              label="Supermarket Logo URL (Optional)"
+              placeholder="https://..."
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+
+          <Input
+            label="Headquarters Business Address"
+            placeholder="e.g. Westlands Road, Nairobi"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className="bg-slate-900 border-slate-800 text-white"
+          />
+        </div>
+
+        {/* Section 2: Owner Information */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+          <p className="font-extrabold text-white flex items-center space-x-2">
+            <UserCheck className="w-4 h-4 text-emerald-400" />
+            <span>2. Supermarket Owner Account Credentials</span>
+          </p>
+
+          <Input
+            label="Owner Full Name"
+            placeholder="e.g. Patrick Kamau"
+            value={ownerName}
+            onChange={(e) => setOwnerName(e.target.value)}
+            className="bg-slate-900 border-slate-800 text-white"
+            required
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Owner Email Address"
+              type="email"
+              placeholder="owner@supermarket.com"
+              value={ownerEmail}
+              onChange={(e) => setOwnerEmail(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+              required
+            />
+            <Input
+              label="Owner Phone Number"
+              placeholder="+254 700 000 000"
+              value={ownerPhone}
+              onChange={(e) => setOwnerPhone(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Section 3: Subscription & Localization */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+          <p className="font-extrabold text-white flex items-center space-x-2">
+            <CreditCard className="w-4 h-4 text-purple-400" />
+            <span>3. Subscription Plan & Regional Localization</span>
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Subscription Plan Tier</label>
+              <select
+                value={plan}
+                onChange={(e) => setPlan(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs font-bold"
+              >
+                <option value="free_trial">Free Trial Plan</option>
+                <option value="starter">Starter Plan (Up to 2 Branches)</option>
+                <option value="professional">Professional Plan (Up to 10 Branches)</option>
+                <option value="enterprise">Enterprise Plan (Unlimited Branches)</option>
+              </select>
+            </div>
+
+            <Input
+              label="Trial Duration (Days)"
+              type="number"
+              value={trialDays}
+              onChange={(e) => setTrialDays(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              label="Country"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white"
+            />
+            <Input
+              label="Currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white font-mono"
+            />
+            <Input
+              label="Time Zone"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              className="bg-slate-900 border-slate-800 text-white font-mono"
+            />
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          disabled={createMutation.isPending}
+          className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 font-bold py-3 text-xs"
+        >
+          {createMutation.isPending ? 'Registering Supermarket Tenant...' : 'Create Supermarket Tenant & Invite Owner'}
+        </Button>
+      </form>
+    </Dialog>
+  );
+}

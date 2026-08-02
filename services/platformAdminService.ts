@@ -81,6 +81,22 @@ export interface PlatformSettingsConfig {
   trial_period_days: number;
 }
 
+export interface CreateSupermarketPayload {
+  name: string;
+  registration_number?: string;
+  owner_name: string;
+  owner_email: string;
+  owner_phone: string;
+  country?: string;
+  currency?: string;
+  timezone?: string;
+  business_address?: string;
+  subscription_plan: string;
+  trial_period_days?: number;
+  logo_url?: string;
+  default_branch_name: string;
+}
+
 export const platformAdminService = {
   // 1. Supermarket Management
   async getSupermarkets(): Promise<Supermarket[]> {
@@ -93,6 +109,149 @@ export const platformAdminService = {
 
     if (error) throw error;
     return data || [];
+  },
+
+  async getSupermarketById(id: string): Promise<{
+    supermarket: Supermarket;
+    owner?: { id: string; name: string; email: string; phone?: string; created_at?: string };
+    branchCount: number;
+    employeeCount: number;
+    auditLogs: any[];
+  } | null> {
+    const supabase = createClient();
+
+    const { data: supermarket, error: smError } = await supabase
+      .from('supermarkets')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (smError || !supermarket) return null;
+
+    const { data: owner } = await supabase
+      .from('users')
+      .select('id, name, email, phone, created_at')
+      .eq('supermarket_id', id)
+      .eq('role', 'supermarket_owner')
+      .maybeSingle();
+
+    const { data: branches = [] } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('supermarket_id', id)
+      .eq('deleted', false);
+
+    const { data: employees = [] } = await supabase
+      .from('users')
+      .select('id')
+      .eq('supermarket_id', id)
+      .eq('deleted', false);
+
+    const { data: auditLogs = [] } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('supermarket_id', id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    return {
+      supermarket,
+      owner: owner || undefined,
+      branchCount: (branches || []).length,
+      employeeCount: (employees || []).length,
+      auditLogs: auditLogs || [],
+    };
+  },
+
+  async createSupermarketTenant(payload: CreateSupermarketPayload): Promise<Supermarket> {
+    const supabase = createClient();
+    const licenseKey = `LIC-PATRICK-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
+
+    // 1. Create Supermarket Record
+    const { data: supermarket, error: smError } = await supabase
+      .from('supermarkets')
+      .insert([
+        {
+          name: payload.name,
+          subscription_plan: payload.subscription_plan || 'starter',
+          subscription_status: 'active',
+          max_branches: payload.subscription_plan === 'enterprise' ? 999 : payload.subscription_plan === 'professional' ? 10 : 2,
+          license_key: licenseKey,
+          logo_url: payload.logo_url,
+          address: payload.business_address,
+          phone: payload.owner_phone,
+          email: payload.owner_email,
+        },
+      ])
+      .select()
+      .single();
+
+    if (smError || !supermarket) throw smError || new Error('Failed to create supermarket record');
+
+    // 2. Create Default Branch
+    const { data: branch, error: branchError } = await supabase
+      .from('branches')
+      .insert([
+        {
+          supermarket_id: supermarket.id,
+          name: payload.default_branch_name || 'Main Branch',
+          location: payload.business_address || 'HQ',
+        },
+      ])
+      .select()
+      .single();
+
+    if (branchError || !branch) throw branchError || new Error('Failed to create default branch');
+
+    // 3. Create Supermarket Owner in Users table
+    const ownerUserId = crypto.randomUUID();
+
+    const { error: userError } = await supabase.from('users').insert([
+      {
+        id: ownerUserId,
+        supermarket_id: supermarket.id,
+        branch_id: branch.id,
+        name: payload.owner_name,
+        email: payload.owner_email,
+        phone: payload.owner_phone,
+        role: 'supermarket_owner',
+        is_active: true,
+      },
+    ]);
+
+    if (userError) {
+      console.warn('Warning creating user record in public.users:', userError.message);
+    }
+
+    // 4. Log in Audit Log
+    await supabase.from('audit_logs').insert([
+      {
+        supermarket_id: supermarket.id,
+        user_id: ownerUserId,
+        action: `Supermarket Tenant Registered: ${payload.name} (Owner: ${payload.owner_email})`,
+        table_name: 'supermarkets',
+        record_id: supermarket.id,
+      },
+    ]);
+
+    return {
+      ...supermarket,
+      owner_name: payload.owner_name,
+      owner_email: payload.owner_email,
+      owner_phone: payload.owner_phone,
+      country: payload.country,
+      currency: payload.currency,
+      timezone: payload.timezone,
+      business_address: payload.business_address,
+      registration_number: payload.registration_number,
+    };
+  },
+
+  async resetOwnerPassword(ownerId: string): Promise<void> {
+    const supabase = createClient();
+    const tempPassword = `Pass@${Math.floor(100000 + Math.random() * 900000)}`;
+    const { error } = await supabase.auth.updateUser({ password: tempPassword });
+    if (error) throw error;
   },
 
   async approveSupermarket(supermarketId: string): Promise<void> {

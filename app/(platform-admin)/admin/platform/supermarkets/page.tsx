@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { platformAdminService } from '@/services/platformAdminService';
+import { CreateSupermarketModal } from '@/components/platform/CreateSupermarketModal';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +21,8 @@ import {
   Building,
   Info,
   CheckCircle2,
+  Plus,
+  ArrowRight,
 } from 'lucide-react';
 import { Supermarket } from '@/types';
 
@@ -26,7 +30,7 @@ export default function PlatformSupermarketsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [viewTenant, setViewTenant] = useState<Supermarket | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { data: supermarkets = [] } = useQuery({
     queryKey: ['platformSupermarketsList'],
@@ -71,12 +75,17 @@ export default function PlatformSupermarketsPage() {
             <span>Supermarket Tenant Management</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            View, approve, suspend, reactivate, or delete supermarket tenant accounts across the platform
+            Register new supermarkets, manage subscription tiers, suspend, reactivate, or inspect tenant accounts
           </p>
         </div>
-        <Badge variant="info" className="text-xs py-1.5 px-3 bg-indigo-950 text-indigo-300 border-indigo-800">
-          {filteredSupermarkets.length} Supermarkets Listed
-        </Badge>
+
+        <Button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 font-bold text-xs"
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          Create Supermarket
+        </Button>
       </div>
 
       {/* Controls */}
@@ -146,17 +155,17 @@ export default function PlatformSupermarketsPage() {
                     <td className="p-4 font-black text-slate-200">{sm.max_branches || 1}</td>
                     <td className="p-4 text-slate-400 font-mono">{formatDateTime(sm.created_at)}</td>
                     <td className="p-4 text-right space-x-1.5">
-                      {/* View Tenant Details */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewTenant(sm)}
-                        className="text-[11px] font-bold py-1 bg-slate-950 text-indigo-300 border-slate-800 hover:bg-slate-800"
-                        title="View Tenant Info"
-                      >
-                        <Info className="w-3.5 h-3.5 mr-1" />
-                        Details
-                      </Button>
+                      {/* Navigate to Dedicated Details Page */}
+                      <Link href={`/admin/platform/supermarkets/${sm.id}`}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-[11px] font-bold py-1 bg-slate-950 text-indigo-300 border-slate-800 hover:bg-slate-800"
+                        >
+                          <Info className="w-3.5 h-3.5 mr-1" />
+                          Details
+                        </Button>
+                      </Link>
 
                       {/* Approve Supermarket */}
                       {sm.subscription_status !== 'active' && (
@@ -218,45 +227,11 @@ export default function PlatformSupermarketsPage() {
         </div>
       </div>
 
-      {/* Supermarket Details Modal */}
-      <Dialog isOpen={!!viewTenant} onClose={() => setViewTenant(null)} title={`Supermarket Tenant Overview: ${viewTenant?.name}`}>
-        <div className="space-y-4 text-xs">
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Supermarket ID:</span>
-              <span className="font-mono text-slate-200">{viewTenant?.id}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Subscription Tier:</span>
-              <span className="font-black uppercase text-indigo-400">{viewTenant?.subscription_plan}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Account Status:</span>
-              <span className="font-extrabold uppercase text-emerald-400">{viewTenant?.subscription_status}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">License Key:</span>
-              <span className="font-mono text-slate-200">{viewTenant?.license_key || 'LIC-PATRICK-2026'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Max Allowed Branches:</span>
-              <span className="font-black text-white">{viewTenant?.max_branches || 1}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Registration Date:</span>
-              <span className="font-mono text-slate-300">{formatDateTime(viewTenant?.created_at || '')}</span>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-500 font-mono text-center">
-            Platform Owner Mode: Operating at SaaS multi-tenant layer. Product & inventory operations remain isolated within tenant bounds.
-          </p>
-
-          <Button type="button" onClick={() => setViewTenant(null)} className="w-full bg-indigo-600 hover:bg-indigo-700 font-bold">
-            Close Overview
-          </Button>
-        </div>
-      </Dialog>
+      {/* Create Supermarket Modal Component */}
+      <CreateSupermarketModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
     </div>
   );
 }

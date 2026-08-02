@@ -49,6 +49,14 @@ export interface Supermarket {
   created_at: string;
   updated_at?: string;
   deleted?: boolean;
+  registration_number?: string;
+  country?: string;
+  currency?: string;
+  timezone?: string;
+  owner_id?: string;
+  owner_name?: string;
+  owner_email?: string;
+  owner_phone?: string;
 }
 
 export interface Category {
