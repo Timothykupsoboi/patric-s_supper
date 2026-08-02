@@ -86,7 +86,7 @@ export const saleService = {
     const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
     if (itemsError) throw itemsError;
 
-    // Trigger stock transactions (type: 'out')
+    // Trigger stock transactions (type: 'out') -> DB trigger updates products.current_stock
     for (const item of payload.cartItems) {
       await supabase.from('stock_transactions').insert([
         {
@@ -101,7 +101,7 @@ export const saleService = {
       ]);
     }
 
-    // Trigger customer credit charge if credit sale
+    // Trigger customer credit charge if credit sale -> DB trigger updates customers.balance
     if (payload.paymentMethod === 'credit' && payload.customer) {
       await supabase.from('customer_credits').insert([
         {
@@ -121,6 +121,69 @@ export const saleService = {
       net_amount: sale.total_amount,
       status: sale.hold_status,
       sale_items: saleItems,
+    };
+  },
+
+  async refundSale(saleId: string): Promise<Sale> {
+    const supabase = createClient();
+
+    // 1. Fetch sale with sale_items
+    const { data: sale, error: fetchErr } = await supabase
+      .from('sales')
+      .select('*, sale_items(*)')
+      .eq('id', saleId)
+      .single();
+
+    if (fetchErr || !sale) throw fetchErr || new Error('Sale transaction not found');
+
+    // 2. Update sale status to refunded
+    const { data: updatedSale, error: updateErr } = await supabase
+      .from('sales')
+      .update({
+        hold_status: 'refunded',
+        payment_status: 'refunded',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', saleId)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+
+    // 3. Restock inventory items (stock_transactions type: 'in')
+    for (const item of sale.sale_items || []) {
+      await supabase.from('stock_transactions').insert([
+        {
+          supermarket_id: sale.supermarket_id,
+          branch_id: sale.branch_id,
+          product_id: item.product_id,
+          type: 'in',
+          quantity: item.quantity,
+          unit_cost: item.unit_price,
+          notes: `POS Sale Refund ${saleId}`,
+        },
+      ]);
+    }
+
+    // 4. Reverse customer debt if credit sale
+    if (sale.payment_method === 'credit' && sale.customer_id) {
+      await supabase.from('customer_credits').insert([
+        {
+          supermarket_id: sale.supermarket_id,
+          branch_id: sale.branch_id,
+          customer_id: sale.customer_id,
+          type: 'payment',
+          amount: sale.total_amount,
+          description: `Credit Sale Refund ${saleId}`,
+        },
+      ]);
+    }
+
+    return {
+      ...updatedSale,
+      invoice_number: `INV-${updatedSale.id.slice(0, 8)}`,
+      net_amount: updatedSale.total_amount,
+      status: updatedSale.hold_status,
     };
   },
 

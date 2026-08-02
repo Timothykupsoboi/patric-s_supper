@@ -50,15 +50,18 @@ export function PaymentModal({ isOpen, onClose, onSaleCompleted }: PaymentModalP
           setLoading(false);
           return;
         }
-        const projectedDebt = customer.current_debt + netTotal;
-        if (projectedDebt > customer.borrow_limit) {
+        const currentDebt = customer.balance ?? customer.current_debt ?? 0;
+        const creditLimit = customer.credit_limit ?? customer.borrow_limit ?? 5000;
+        const projectedDebt = currentDebt + netTotal;
+
+        if (projectedDebt > creditLimit) {
           setError(
-            `Borrow limit exceeded! Customer limit is KES ${customer.borrow_limit.toFixed(
+            `Borrow limit exceeded! Customer limit is KES ${creditLimit.toFixed(
               2
-            )}, current debt is KES ${customer.current_debt.toFixed(
+            )}, current debt is KES ${currentDebt.toFixed(
               2
             )}. Adding KES ${netTotal.toFixed(2)} exceeds limit by KES ${(
-              projectedDebt - customer.borrow_limit
+              projectedDebt - creditLimit
             ).toFixed(2)}.`
           );
           setLoading(false);
@@ -144,81 +147,64 @@ export function PaymentModal({ isOpen, onClose, onSaleCompleted }: PaymentModalP
           </div>
         </div>
 
-        {/* Cash Tendered Field */}
+        {/* Dynamic Payment Input Details */}
         {paymentMethod === 'cash' && (
-          <div className="space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <Input
-              type="number"
               label="Cash Tendered (KES)"
+              type="number"
               placeholder="e.g. 1000"
               value={cashTendered}
               onChange={(e) => setCashTendered(e.target.value)}
-              className="text-lg font-bold"
-              autoFocus
+              required
             />
-            {parseFloat(cashTendered) > 0 && (
-              <div className="flex justify-between text-xs font-bold text-gray-900 border-t border-gray-200 pt-2">
-                <span>CHANGE DUE:</span>
-                <span className="text-blue-600 text-sm">{formatCurrency(changeDue)}</span>
-              </div>
-            )}
+            <div className="flex justify-between items-center text-xs font-bold pt-1">
+              <span className="text-slate-600">Change Due to Customer:</span>
+              <span className="text-emerald-700 font-black text-sm">{formatCurrency(changeDue)}</span>
+            </div>
           </div>
         )}
 
-        {/* M-Pesa Phone Input */}
         {paymentMethod === 'mpesa' && (
-          <div className="space-y-2 bg-emerald-50/50 p-3 rounded-lg border border-emerald-200">
+          <div className="space-y-2 bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
             <Input
               label="Customer M-Pesa Phone Number"
               placeholder="0712345678"
               value={mpesaPhone}
               onChange={(e) => setMpesaPhone(e.target.value)}
+              required
             />
             {mpesaStatus && (
-              <p className="text-xs text-emerald-700 font-semibold flex items-center">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              <p className="text-[11px] font-bold text-emerald-800 flex items-center mt-1">
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600 animate-pulse" />
                 {mpesaStatus}
               </p>
             )}
           </div>
         )}
 
-        {/* Debtors Credit Warning */}
         {paymentMethod === 'credit' && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
-            <p className="font-bold flex items-center">
+          <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 space-y-1">
+            <div className="flex items-center text-amber-800 font-bold text-xs">
               <AlertTriangle className="w-4 h-4 mr-1 text-amber-600" />
-              Customer Debt Account Sale
+              <span>Store Credit Debt Transaction</span>
+            </div>
+            <p className="text-[11px] text-amber-700">
+              Amount will be charged to <strong>{customer?.name || 'Customer Profile'}</strong> debtor balance.
             </p>
-            {customer ? (
-              <p>
-                Customer: <strong>{customer.name}</strong> | Limit: KES {customer.borrow_limit.toFixed(2)} | Current Debt: KES{' '}
-                {customer.current_debt.toFixed(2)}
-              </p>
-            ) : (
-              <p className="text-red-600 font-bold">Select a customer profile first to enable credit borrowing.</p>
-            )}
           </div>
         )}
 
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
-            {error}
-          </div>
-        )}
+        {error && <p className="text-xs text-red-600 font-bold bg-red-50 p-2.5 rounded-lg border border-red-200">{error}</p>}
 
-        <div className="flex space-x-2 pt-2">
-          <Button variant="outline" onClick={onClose} className="w-1/3">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleProcessPayment}
-            disabled={loading}
-            className="w-2/3 py-3 font-bold bg-emerald-600 hover:bg-emerald-700"
-          >
-            {loading ? 'Processing...' : 'Confirm Payment'}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={handleProcessPayment}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold py-3 text-sm"
+          disabled={loading}
+        >
+          {loading ? 'Processing Sale...' : `Confirm & Pay ${formatCurrency(netTotal)}`}
+        </Button>
       </div>
     </Dialog>
   );
