@@ -165,6 +165,9 @@ export const platformAdminService = {
 
   async createSupermarketTenant(payload: CreateSupermarketPayload): Promise<Supermarket> {
     const supabase = createClient();
+    const supermarketId = crypto.randomUUID();
+    const branchId = crypto.randomUUID();
+    const ownerUserId = crypto.randomUUID();
     const licenseKey = `LIC-PATRICK-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
 
     // 1. Create Supermarket Record
@@ -172,6 +175,7 @@ export const platformAdminService = {
       .from('supermarkets')
       .insert([
         {
+          id: supermarketId,
           name: payload.name,
           subscription_plan: payload.subscription_plan || 'starter',
           subscription_status: 'active',
@@ -193,6 +197,7 @@ export const platformAdminService = {
       .from('branches')
       .insert([
         {
+          id: branchId,
           supermarket_id: supermarket.id,
           name: payload.default_branch_name || 'Main Branch',
           location: payload.business_address || 'HQ',
@@ -204,8 +209,6 @@ export const platformAdminService = {
     if (branchError || !branch) throw branchError || new Error('Failed to create default branch');
 
     // 3. Create Supermarket Owner in Users table
-    const ownerUserId = crypto.randomUUID();
-
     const { error: userError } = await supabase.from('users').insert([
       {
         id: ownerUserId,
