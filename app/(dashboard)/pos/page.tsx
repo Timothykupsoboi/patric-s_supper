@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppDispatch } from '@/store';
 import { addToCart, setCustomer } from '@/store/cartSlice';
 import { productService } from '@/services/productService';
@@ -13,8 +13,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Product, Sale } from '@/types';
-import { Search, Barcode, AlertCircle, Plus, Sparkles } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { Search, Barcode, AlertCircle, Plus, Sparkles, Clock, AlertTriangle } from 'lucide-react';
+import { formatCurrency, getExpiryStatus, isProductExpired } from '@/lib/utils';
 
 // Dynamic Imports with Lazy Loading
 const PaymentModal = dynamic(
@@ -27,6 +27,7 @@ const ReceiptModal = dynamic(
 );
 
 export default function POSPage() {
+  const queryClient = useQueryClient();
   const dispatch = useAppDispatch();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -38,11 +39,10 @@ export default function POSPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 12;
 
-  // Fetch Products with optimized stale time
+  // Fetch Products
   const { data: products = [], isLoading: isProductsLoading } = useQuery({
     queryKey: ['products'],
     queryFn: () => productService.getProducts(),
-    staleTime: 1000 * 60 * 5, // 5 minutes cache
   });
 
   // Fetch Categories
@@ -200,31 +200,70 @@ export default function POSPage() {
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {paginatedProducts.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() => dispatch(addToCart(product))}
-                  className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-500 hover:shadow-md transition-all text-left flex flex-col justify-between group h-32"
-                >
-                  <div>
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{product.sku || 'ITEM'}</span>
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${(product.current_stock ?? product.stock_quantity ?? 0) <= 5 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {product.current_stock ?? product.stock_quantity ?? 0} left
+              {paginatedProducts.map((product) => {
+                const stockQty = product.current_stock ?? product.stock_quantity ?? 0;
+                const expStatus = getExpiryStatus(product.expiry_date);
+                const expired = isProductExpired(product.expiry_date);
+
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => dispatch(addToCart(product))}
+                    className={`p-3.5 rounded-2xl border shadow-sm transition-all text-left flex flex-col justify-between group h-36 relative ${
+                      expired
+                        ? 'bg-red-50/60 border-red-200 hover:border-red-400'
+                        : stockQty <= 0
+                        ? 'bg-slate-100 border-slate-200 opacity-60'
+                        : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-md'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{product.sku || 'ITEM'}</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${stockQty <= 0 ? 'bg-red-600 text-white' : stockQty <= 5 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                          {stockQty <= 0 ? 'Out of Stock' : `${stockQty} left`}
+                        </span>
+                      </div>
+                      <h3 className="font-extrabold text-xs text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {product.name}
+                      </h3>
+                    </div>
+
+                    {/* Expiry Warning Badge */}
+                    {product.expiry_date && (
+                      <div className="mt-1">
+                        {expStatus === 'expired' && (
+                          <span className="inline-flex items-center text-[9px] font-black text-red-700 bg-red-100 px-1.5 py-0.5 rounded">
+                            <AlertTriangle className="w-3 h-3 mr-0.5" /> EXPIRED ({product.expiry_date})
+                          </span>
+                        )}
+                        {expStatus === 'expires_today' && (
+                          <span className="inline-flex items-center text-[9px] font-black text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                            <Clock className="w-3 h-3 mr-0.5" /> EXPIRES TODAY
+                          </span>
+                        )}
+                        {expStatus === 'within_7_days' && (
+                          <span className="inline-flex items-center text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                            <Clock className="w-3 h-3 mr-0.5" /> Exp 7d ({product.expiry_date})
+                          </span>
+                        )}
+                        {expStatus === 'within_30_days' && (
+                          <span className="inline-flex items-center text-[9px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                            <Clock className="w-3 h-3 mr-0.5" /> Exp 30d
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center mt-2 border-t border-slate-50 pt-2">
+                      <span className="text-sm font-black text-slate-900">{formatCurrency(product.selling_price)}</span>
+                      <span className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <Plus className="w-3.5 h-3.5" />
                       </span>
                     </div>
-                    <h3 className="font-extrabold text-xs text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                      {product.name}
-                    </h3>
-                  </div>
-                  <div className="flex justify-between items-center mt-2 border-t border-slate-50 pt-2">
-                    <span className="text-sm font-black text-slate-900">{formatCurrency(product.selling_price)}</span>
-                    <span className="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                      <Plus className="w-3.5 h-3.5" />
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Pagination Controls */}
@@ -263,7 +302,16 @@ export default function POSPage() {
         <PaymentModal
           isOpen={isPaymentOpen}
           onClose={() => setIsPaymentOpen(false)}
-          onSaleCompleted={(sale: Sale) => setCompletedSale(sale)}
+          onSaleCompleted={(sale: Sale) => {
+            setCompletedSale(sale);
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['salesMetrics'] });
+            queryClient.invalidateQueries({ queryKey: ['recentSales'] });
+            queryClient.invalidateQueries({ queryKey: ['lowStock'] });
+            queryClient.invalidateQueries({ queryKey: ['stockTransactions'] });
+            queryClient.invalidateQueries({ queryKey: ['nearExpiry'] });
+            queryClient.invalidateQueries({ queryKey: ['financialReportMetrics'] });
+          }}
         />
       )}
 

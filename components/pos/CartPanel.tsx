@@ -26,7 +26,7 @@ interface CartPanelProps {
 
 export function CartPanel({ onOpenPayment, onSelectCustomer }: CartPanelProps) {
   const dispatch = useAppDispatch();
-  const { items, customer, globalDiscount, heldCarts } = useAppSelector((state) => state.cart);
+  const { items, customer, globalDiscount, heldCarts, warningMessage } = useAppSelector((state) => state.cart);
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false);
 
   const subtotal = items.reduce((sum, item) => sum + item.product.selling_price * item.quantity - item.discount, 0);
@@ -38,6 +38,12 @@ export function CartPanel({ onOpenPayment, onSelectCustomer }: CartPanelProps) {
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[calc(100vh-6.5rem)]">
+      {warningMessage && (
+        <div className="p-3 bg-red-600 text-white text-xs font-extrabold flex items-center space-x-2 rounded-t-2xl animate-in slide-in-from-top">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{warningMessage}</span>
+        </div>
+      )}
       {/* Customer & Register Header */}
       <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 rounded-t-2xl">
         <div className="flex items-center space-x-3 min-w-0">

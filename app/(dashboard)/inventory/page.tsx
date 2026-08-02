@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft, Sparkles, AlertCircle, Edit3, Trash2 } from 'lucide-react';
+import { formatCurrency, formatDateTime, getExpiryStatus, ExpiryStatus } from '@/lib/utils';
+import { Package, Plus, Search, Calendar, Truck, ArrowRightLeft, Sparkles, AlertCircle, Edit3, Trash2, Clock, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Product, PurchaseOrder } from '@/types';
 
 export default function InventoryPage() {
@@ -455,45 +455,7 @@ export default function InventoryPage() {
 
       {/* Tab 4: Expiry Warnings */}
       {activeTab === 'expiry' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Near-Expiry & Expired Stock Watchlist (&lt;30 Days)</CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Product Name</th>
-                  <th className="p-3">Barcode</th>
-                  <th className="p-3">Expiry Date</th>
-                  <th className="p-3">Current Stock</th>
-                  <th className="p-3">Risk Alert</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {expiryProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-4 text-center text-emerald-600 font-bold">
-                      No stock expiring within 30 days!
-                    </td>
-                  </tr>
-                ) : (
-                  expiryProducts.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-extrabold text-slate-900">{p.name}</td>
-                      <td className="p-3 font-mono text-slate-500">{p.barcode}</td>
-                      <td className="p-3 font-bold text-red-600">{p.expiry_date}</td>
-                      <td className="p-3 font-black">{p.current_stock ?? p.stock_quantity ?? 0}</td>
-                      <td className="p-3">
-                        <Badge variant="danger">Near Expiry</Badge>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <ExpiryWatchlistSection products={products} />
       )}
 
       {/* Create Product Modal */}
@@ -633,5 +595,118 @@ export default function InventoryPage() {
         </form>
       </Dialog>
     </div>
+  );
+}
+
+function ExpiryWatchlistSection({ products }: { products: Product[] }) {
+  const [expiryFilter, setExpiryFilter] = useState<'all' | 'expired' | 'soon' | 'safe'>('all');
+
+  const productsWithExpiry = products.filter((p) => p.expiry_date && p.expiry_date.trim() !== '');
+
+  const filteredProducts = productsWithExpiry.filter((p) => {
+    const st = getExpiryStatus(p.expiry_date);
+    if (expiryFilter === 'expired') return st === 'expired' || st === 'expires_today';
+    if (expiryFilter === 'soon') return st === 'within_7_days' || st === 'within_30_days';
+    if (expiryFilter === 'safe') return st === 'safe';
+    return true;
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b pb-4">
+        <div>
+          <CardTitle>Product Expiry Monitoring & Risk Watchlist</CardTitle>
+          <p className="text-xs text-slate-500">Automatically tracking shelf-life, expiration dates, and disposal warnings</p>
+        </div>
+        <div className="flex space-x-1 border p-1 rounded-xl bg-slate-50 text-xs font-bold">
+          <button
+            onClick={() => setExpiryFilter('all')}
+            className={`px-3 py-1.5 rounded-lg transition-all ${expiryFilter === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}
+          >
+            All Monitored ({productsWithExpiry.length})
+          </button>
+          <button
+            onClick={() => setExpiryFilter('expired')}
+            className={`px-3 py-1.5 rounded-lg transition-all ${expiryFilter === 'expired' ? 'bg-red-600 text-white shadow-sm' : 'text-red-700 hover:bg-red-100'}`}
+          >
+            Expired
+          </button>
+          <button
+            onClick={() => setExpiryFilter('soon')}
+            className={`px-3 py-1.5 rounded-lg transition-all ${expiryFilter === 'soon' ? 'bg-amber-600 text-white shadow-sm' : 'text-amber-700 hover:bg-amber-100'}`}
+          >
+            Expiring Soon
+          </button>
+          <button
+            onClick={() => setExpiryFilter('safe')}
+            className={`px-3 py-1.5 rounded-lg transition-all ${expiryFilter === 'safe' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-100'}`}
+          >
+            Safe Stock
+          </button>
+        </div>
+      </CardHeader>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
+            <tr>
+              <th className="p-3">Product Name</th>
+              <th className="p-3">Barcode / SKU</th>
+              <th className="p-3">Expiry Date</th>
+              <th className="p-3">Current Stock</th>
+              <th className="p-3">Monitoring Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredProducts.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="p-6 text-center text-slate-500 font-bold">
+                  No products matching selected expiry filter.
+                </td>
+              </tr>
+            ) : (
+              filteredProducts.map((p) => {
+                const status = getExpiryStatus(p.expiry_date);
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-extrabold text-slate-900">{p.name}</td>
+                    <td className="p-3 font-mono text-slate-500">{p.barcode || p.sku}</td>
+                    <td className="p-3 font-bold text-slate-800">{p.expiry_date}</td>
+                    <td className="p-3 font-black">{p.current_stock ?? p.stock_quantity ?? 0} Pcs</td>
+                    <td className="p-3">
+                      {status === 'expired' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-black bg-red-100 text-red-800 border border-red-200">
+                          <AlertTriangle className="w-3 h-3 mr-1" /> EXPIRED - REMOVE FROM SHELF
+                        </span>
+                      )}
+                      {status === 'expires_today' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                          <Clock className="w-3 h-3 mr-1" /> EXPIRES TODAY
+                        </span>
+                      )}
+                      {status === 'within_7_days' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <Clock className="w-3 h-3 mr-1" /> EXPIRES WITHIN 7 DAYS
+                        </span>
+                      )}
+                      {status === 'within_30_days' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                          <Clock className="w-3 h-3 mr-1" /> EXPIRES WITHIN 30 DAYS
+                        </span>
+                      )}
+                      {status === 'safe' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <ShieldCheck className="w-3 h-3 mr-1" /> SAFE (&gt;30 DAYS)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

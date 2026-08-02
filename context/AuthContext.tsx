@@ -85,6 +85,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('Logout fallback:', e);
     } finally {
       setUser(null);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch {}
+        window.location.replace('/login');
+      }
     }
   };
 

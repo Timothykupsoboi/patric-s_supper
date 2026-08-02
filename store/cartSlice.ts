@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Product, CartItem, Customer, PaymentMethod } from '@/types';
+import { isProductExpired } from '@/lib/utils';
 
 export interface CartState {
   items: CartItem[];
@@ -8,6 +9,7 @@ export interface CartState {
   globalDiscount: number;
   notes: string;
   heldCarts: { id: string; name: string; items: CartItem[]; customer: Customer | null; date: string }[];
+  warningMessage?: string | null;
 }
 
 const initialState: CartState = {
@@ -17,6 +19,7 @@ const initialState: CartState = {
   globalDiscount: 0,
   notes: '',
   heldCarts: [],
+  warningMessage: null,
 };
 
 export const cartSlice = createSlice({
@@ -24,20 +27,46 @@ export const cartSlice = createSlice({
   initialState,
   reducers: {
     addToCart: (state, action: PayloadAction<Product>) => {
+      state.warningMessage = null;
+
+      // Prevent adding expired products
+      if (isProductExpired(action.payload.expiry_date)) {
+        state.warningMessage = `Cannot add expired product "${action.payload.name}" to register!`;
+        return;
+      }
+
+      const availableStock = action.payload.current_stock ?? action.payload.stock_quantity ?? 0;
+      if (availableStock <= 0) {
+        state.warningMessage = `Product "${action.payload.name}" is out of stock!`;
+        return;
+      }
+
       const existing = state.items.find((i) => i.product.id === action.payload.id);
       if (existing) {
-        existing.quantity += 1;
+        if (existing.quantity + 1 > availableStock) {
+          state.warningMessage = `Cannot add more than available stock (${availableStock}) for "${action.payload.name}".`;
+          existing.quantity = availableStock;
+        } else {
+          existing.quantity += 1;
+        }
       } else {
         state.items.push({ product: action.payload, quantity: 1, discount: 0 });
       }
     },
     updateQuantity: (state, action: PayloadAction<{ productId: string; quantity: number }>) => {
+      state.warningMessage = null;
       const item = state.items.find((i) => i.product.id === action.payload.productId);
       if (item) {
         if (action.payload.quantity <= 0) {
           state.items = state.items.filter((i) => i.product.id !== action.payload.productId);
         } else {
-          item.quantity = action.payload.quantity;
+          const availableStock = item.product.current_stock ?? item.product.stock_quantity ?? 0;
+          if (action.payload.quantity > availableStock) {
+            state.warningMessage = `Stock limit reached (${availableStock} max available).`;
+            item.quantity = availableStock;
+          } else {
+            item.quantity = action.payload.quantity;
+          }
         }
       }
     },

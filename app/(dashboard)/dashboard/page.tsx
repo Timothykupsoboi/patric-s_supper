@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { saleService } from '@/services/saleService';
 import { inventoryService } from '@/services/inventoryService';
+import { productService } from '@/services/productService';
 import { useAuth } from '@/context/AuthContext';
 import { authService } from '@/services/authService';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SalesChart } from '@/components/dashboard/SalesChart';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency, formatDateTime, getExpiryStatus } from '@/lib/utils';
 import {
   DollarSign,
   ShoppingBag,
@@ -31,6 +32,8 @@ import {
   ArrowRight,
   Sparkles,
   ShieldCheck,
+  PackageX,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -66,10 +69,24 @@ export default function DashboardPage() {
     enabled: canCreateSales || canViewReports,
   });
 
-  const { data: lowStock = [], isLoading: isStockLoading } = useQuery({
-    queryKey: ['lowStock'],
-    queryFn: () => inventoryService.getLowStockProducts(),
+  const { data: products = [], isLoading: isProductsLoading } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => productService.getProducts(),
     enabled: canManageInventory,
+  });
+
+  // Calculate Expiry & Stock Metrics
+  const expiredProducts = products.filter((p) => {
+    const st = getExpiryStatus(p.expiry_date);
+    return st === 'expired' || st === 'expires_today';
+  });
+  const expiring7Days = products.filter((p) => getExpiryStatus(p.expiry_date) === 'within_7_days');
+  const expiring30Days = products.filter((p) => getExpiryStatus(p.expiry_date) === 'within_30_days');
+  const outOfStockProducts = products.filter((p) => (p.current_stock ?? p.stock_quantity ?? 0) <= 0);
+  const lowStockProducts = products.filter((p) => {
+    const stock = p.current_stock ?? p.stock_quantity ?? 0;
+    const min = p.minimum_stock ?? p.reorder_level ?? 5;
+    return stock > 0 && stock <= min;
   });
 
   return (
@@ -259,10 +276,10 @@ export default function DashboardPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Low Stock Warnings</p>
-                  {isStockLoading ? (
+                  {isProductsLoading ? (
                     <Skeleton className="h-8 w-16 mt-2" />
                   ) : (
-                    <h2 className="text-2xl font-black text-amber-600 mt-1">{lowStock.length}</h2>
+                    <h2 className="text-2xl font-black text-amber-600 mt-1">{lowStockProducts.length}</h2>
                   )}
                 </div>
                 <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
@@ -274,6 +291,66 @@ export default function DashboardPage() {
               </div>
             </Card>
           )}
+        </div>
+      )}
+
+      {/* Inventory & Expiry Health Monitoring Widgets */}
+      {canManageInventory && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <Card className="bg-red-50 border-red-200">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold text-red-700 uppercase">Expired Products</p>
+                <h3 className="text-2xl font-black text-red-900 mt-1">{expiredProducts.length}</h3>
+              </div>
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <p className="text-[10px] text-red-600 font-bold mt-2">Requires immediate disposal</p>
+          </Card>
+
+          <Card className="bg-amber-50 border-amber-200">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold text-amber-800 uppercase">Expires in 7 Days</p>
+                <h3 className="text-2xl font-black text-amber-900 mt-1">{expiring7Days.length}</h3>
+              </div>
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <p className="text-[10px] text-amber-700 font-bold mt-2">Urgent clearance needed</p>
+          </Card>
+
+          <Card className="bg-blue-50 border-blue-200">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold text-blue-800 uppercase">Expires in 30 Days</p>
+                <h3 className="text-2xl font-black text-blue-900 mt-1">{expiring30Days.length}</h3>
+              </div>
+              <Calendar className="w-5 h-5 text-blue-600" />
+            </div>
+            <p className="text-[10px] text-blue-700 font-bold mt-2">Monitor shelf rotation</p>
+          </Card>
+
+          <Card className="bg-amber-500 text-white">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold uppercase text-amber-100">Low Stock Products</p>
+                <h3 className="text-2xl font-black text-white mt-1">{lowStockProducts.length}</h3>
+              </div>
+              <AlertCircle className="w-5 h-5 text-amber-200" />
+            </div>
+            <p className="text-[10px] text-amber-100 font-bold mt-2">Reorder threshold alert</p>
+          </Card>
+
+          <Card className="bg-slate-900 text-white border-red-500">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold text-red-400 uppercase">Out of Stock</p>
+                <h3 className="text-2xl font-black text-red-400 mt-1">{outOfStockProducts.length}</h3>
+              </div>
+              <PackageX className="w-5 h-5 text-red-400" />
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold mt-2">Zero stock quantity</p>
+          </Card>
         </div>
       )}
 
@@ -365,17 +442,17 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <div className="divide-y divide-slate-100">
-              {isStockLoading ? (
+              {isProductsLoading ? (
                 <div className="space-y-3 py-2">
                   <Skeleton className="h-10 w-full" />
                   <Skeleton className="h-10 w-full" />
                 </div>
-              ) : lowStock.length === 0 ? (
+              ) : lowStockProducts.length === 0 ? (
                 <p className="text-xs text-emerald-600 font-semibold py-6 text-center">
                   All inventory items are well stocked!
                 </p>
               ) : (
-                lowStock.map((prod) => (
+                lowStockProducts.map((prod) => (
                   <div key={prod.id} className="py-3 flex justify-between items-center text-xs">
                     <div>
                       <p className="font-extrabold text-slate-900">{prod.name}</p>
