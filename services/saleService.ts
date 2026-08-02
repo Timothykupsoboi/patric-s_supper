@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import { Sale, CartItem, PaymentMethod, Customer } from '@/types';
+import { Sale, CartItem, PaymentMethod, Customer, Product } from '@/types';
 
 export interface CompleteSalePayload {
   supermarket_id: string;
@@ -194,7 +194,7 @@ export const saleService = {
 
     if (error) throw error;
     
-    return (data || []).map((s: any) => ({
+    return (data || []).map((s: Sale) => ({
       ...s,
       invoice_number: `INV-${s.id.slice(0, 8)}`,
       net_amount: s.total_amount,
@@ -237,9 +237,9 @@ export const saleService = {
       .gte('created_at', monthStart.toISOString())
       .eq('deleted', false);
 
-    const todayRevenue = (todaySalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
-    const weeklyRevenue = (weekSalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
-    const monthlyRevenue = (monthSalesData || []).reduce((acc: number, curr: any) => acc + (curr.total_amount || 0), 0);
+    const todayRevenue = (todaySalesData || []).reduce((acc: number, curr: { total_amount?: number }) => acc + (curr.total_amount || 0), 0);
+    const weeklyRevenue = (weekSalesData || []).reduce((acc: number, curr: { total_amount?: number }) => acc + (curr.total_amount || 0), 0);
+    const monthlyRevenue = (monthSalesData || []).reduce((acc: number, curr: { total_amount?: number }) => acc + (curr.total_amount || 0), 0);
 
     return {
       todaySales: (todaySalesData || []).length,
@@ -274,26 +274,26 @@ export const saleService = {
     let netSales = 0;
     let cogs = 0;
 
-    (sales || []).forEach((s: any) => {
+    (sales || []).forEach((s: { total_amount?: number; discount_amount?: number; tax_amount?: number; sale_items?: Array<{ quantity: number; unit_price: number; product?: { buying_price?: number } }> }) => {
       grossSales += (s.total_amount || 0) + (s.discount_amount || 0);
       totalDiscounts += s.discount_amount || 0;
       totalTax += s.tax_amount || 0;
       netSales += s.total_amount || 0;
 
-      (s.sale_items || []).forEach((item: any) => {
+      (s.sale_items || []).forEach((item) => {
         const itemCost = item.product?.buying_price || (item.unit_price * 0.7);
         cogs += itemCost * item.quantity;
       });
     });
 
-    const totalExpenses = (expenses || []).reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
+    const totalExpenses = (expenses || []).reduce((acc: number, curr: { amount?: number }) => acc + (curr.amount || 0), 0);
     const grossProfit = Math.max(0, netSales - cogs);
     const netProfit = grossProfit - totalExpenses;
 
     let inventoryCostValuation = 0;
     let inventoryRetailValuation = 0;
 
-    (products || []).forEach((p: any) => {
+    (products || []).forEach((p: { buying_price?: number; selling_price?: number; current_stock?: number }) => {
       inventoryCostValuation += (p.buying_price || 0) * (p.current_stock || 0);
       inventoryRetailValuation += (p.selling_price || 0) * (p.current_stock || 0);
     });

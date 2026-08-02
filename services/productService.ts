@@ -12,7 +12,7 @@ export const productService = {
 
     if (error) throw error;
     
-    return (data || []).map((p: any) => ({
+    return (data || []).map((p: Product) => ({
       ...p,
       cost_price: p.buying_price,
       stock_quantity: p.current_stock,
@@ -35,7 +35,7 @@ export const productService = {
 
   async createProduct(product: Partial<Product>): Promise<Product> {
     const supabase = createClient();
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       name: product.name,
       sku: product.sku || `SKU-${Date.now().toString().slice(-6)}`,
       barcode: product.barcode || `BC-${Date.now()}`,
@@ -58,6 +58,9 @@ export const productService = {
     }
     if (product.supermarket_id && product.supermarket_id.trim() !== '') {
       payload.supermarket_id = product.supermarket_id;
+    }
+    if (product.image_url && product.image_url.trim() !== '') {
+      payload.image_url = product.image_url;
     }
 
     const { data, error } = await supabase
@@ -82,7 +85,7 @@ export const productService = {
 
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
     const supabase = createClient();
-    const payload: any = { ...updates, updated_at: new Date().toISOString() };
+    const payload: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() };
     
     if (updates.cost_price !== undefined) payload.buying_price = updates.cost_price;
     if (updates.stock_quantity !== undefined) payload.current_stock = updates.stock_quantity;
