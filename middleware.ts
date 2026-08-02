@@ -62,21 +62,36 @@ export async function middleware(request: NextRequest) {
     user = null;
   }
 
-  // 2. Root route "/" handling
-  if (pathname === '/') {
-    if (!user) {
+  // 2. Redirect unauthenticated users to /login for root or any protected route
+  if (!user) {
+    if (!isPublicRoute || pathname === '/') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return response;
   }
 
-  // 3. Redirect unauthenticated users trying to access protected routes to /login
-  if (!user && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
+  // 3. For authenticated users accessing / or /login, redirect automatically based on profile role
+  if (pathname === '/' || pathname === '/login') {
+    try {
+      const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll() {},
+        },
+      });
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-  // 4. Redirect authenticated users trying to access /login to /dashboard
-  if (user && isPublicRoute && pathname === '/login') {
+      if (profile?.role === 'platform_owner') {
+        return NextResponse.redirect(new URL('/admin/platform', request.url));
+      }
+    } catch {}
+
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
