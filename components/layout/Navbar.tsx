@@ -88,8 +88,16 @@ export function Navbar() {
         </Badge>
 
         <div className="flex items-center space-x-2 border-l border-slate-200 pl-4">
-          <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xs">
-            {user?.name?.charAt(0) || 'U'}
+          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-slate-900 text-white flex items-center justify-center font-black text-xs border border-slate-200">
+            {user?.photo_url ? (
+              <img
+                src={user.photo_url}
+                alt={user.name || 'User'}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span>{user?.name?.charAt(0).toUpperCase() || 'U'}</span>
+            )}
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-xs font-extrabold text-slate-900 leading-none">{user?.name || 'Cashier User'}</p>
