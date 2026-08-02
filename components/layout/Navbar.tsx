@@ -19,16 +19,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, lockTerminal, logoutAccount } = useAuth();
   const { activeBranch, branches, setBranch } = useTenant();
   const [showBranchMenu, setShowBranchMenu] = useState(false);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  const handleConfirmLogout = async () => {
-    setIsLoggingOut(true);
-    await logout();
-  };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
@@ -105,7 +99,7 @@ export function Navbar() {
         <button
           onClick={() => setIsLogoutOpen(true)}
           className="flex items-center space-x-1 py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-extrabold text-xs transition-colors border border-red-100"
-          title="Sign Out Session"
+          title="Sign Out Options"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span className="hidden md:inline">Sign Out</span>
@@ -117,8 +111,15 @@ export function Navbar() {
       <LogoutConfirmationModal
         isOpen={isLogoutOpen}
         onClose={() => setIsLogoutOpen(false)}
-        onConfirm={handleConfirmLogout}
-        isLoggingOut={isLoggingOut}
+        onLockTerminal={() => {
+          setIsLogoutOpen(false);
+          lockTerminal();
+        }}
+        onAccountLogout={() => {
+          setIsLogoutOpen(false);
+          logoutAccount();
+        }}
+        isPlatformOwner={user?.role === 'platform_owner'}
       />
     </header>
   );

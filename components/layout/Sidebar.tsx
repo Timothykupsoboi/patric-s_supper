@@ -20,19 +20,14 @@ import {
   Settings,
   Store,
   LogOut,
+  Lock,
 } from 'lucide-react';
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, lockTerminal, logoutAccount } = useAuth();
   const role = user?.role || 'cashier';
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  const handleConfirmLogout = async () => {
-    setIsLoggingOut(true);
-    await logout();
-  };
 
   const allNavigation = [
     { name: 'Executive Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'reports.view' as PermissionKey },
@@ -87,17 +82,27 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer & Sign Out Button */}
-      <div className="p-4 border-t border-slate-800 space-y-3">
+      {/* Footer & Action Buttons */}
+      <div className="p-4 border-t border-slate-800 space-y-2">
+        <button
+          onClick={lockTerminal}
+          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 hover:text-white border border-blue-800/40 text-xs font-extrabold transition-all"
+          title="Lock terminal and return to PIN screen"
+        >
+          <Lock className="w-3.5 h-3.5" />
+          <span>Lock Terminal</span>
+        </button>
+
         <button
           onClick={() => setIsLogoutOpen(true)}
           className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-white border border-red-800/40 text-xs font-extrabold transition-all"
+          title="Sign out of account entirely"
         >
           <LogOut className="w-3.5 h-3.5" />
-          <span>Sign Out</span>
+          <span>Log Out of Account</span>
         </button>
 
-        <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between">
+        <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between pt-1">
           <span>Supabase Multi-Tenant</span>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         </div>
@@ -106,8 +111,15 @@ export function Sidebar() {
       <LogoutConfirmationModal
         isOpen={isLogoutOpen}
         onClose={() => setIsLogoutOpen(false)}
-        onConfirm={handleConfirmLogout}
-        isLoggingOut={isLoggingOut}
+        onLockTerminal={() => {
+          setIsLogoutOpen(false);
+          lockTerminal();
+        }}
+        onAccountLogout={() => {
+          setIsLogoutOpen(false);
+          logoutAccount();
+        }}
+        isPlatformOwner={user?.role === 'platform_owner'}
       />
     </aside>
   );

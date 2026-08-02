@@ -3,51 +3,65 @@
 import React from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { LogOut, AlertTriangle } from 'lucide-react';
+import { LogOut, Lock, AlertTriangle, ShieldOff } from 'lucide-react';
 
 interface LogoutConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
-  isLoggingOut?: boolean;
+  onLockTerminal: () => void;
+  onAccountLogout: () => void;
+  isPlatformOwner?: boolean;
 }
 
 export function LogoutConfirmationModal({
   isOpen,
   onClose,
-  onConfirm,
-  isLoggingOut = false,
+  onLockTerminal,
+  onAccountLogout,
+  isPlatformOwner = false,
 }: LogoutConfirmationModalProps) {
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} title="Confirm Sign Out" className="max-w-md">
+    <Dialog isOpen={isOpen} onClose={onClose} title="Sign Out Options" className="max-w-md">
       <div className="space-y-5 text-center p-2">
-        <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-sm">
-          <AlertTriangle className="w-6 h-6" />
+        <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center mx-auto shadow-sm">
+          <Lock className="w-6 h-6 text-blue-600" />
         </div>
 
         <div>
-          <h3 className="text-lg font-black text-slate-900">Are you sure you want to sign out?</h3>
+          <h3 className="text-lg font-black text-slate-900">Choose Sign Out Behavior</h3>
           <p className="text-xs text-slate-500 mt-1">
-            Your active session will be securely terminated and all cached data cleared.
+            {isPlatformOwner
+              ? 'Platform Owner session will be completely signed out.'
+              : 'Lock your active terminal with PIN or log out of your account entirely.'}
           </p>
         </div>
 
-        <div className="flex items-center justify-center space-x-3 pt-2">
+        <div className="space-y-2.5 pt-2">
+          {!isPlatformOwner && (
+            <Button
+              onClick={onLockTerminal}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3 shadow-md text-xs flex items-center justify-center space-x-2"
+            >
+              <Lock className="w-4 h-4" />
+              <span>Lock Terminal (Requires PIN to Return)</span>
+            </Button>
+          )}
+
+          <Button
+            onClick={onAccountLogout}
+            variant="outline"
+            className="w-full border-red-200 text-red-600 hover:bg-red-50 font-extrabold py-3 text-xs flex items-center justify-center space-x-2"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Log Out of Account (Sign Out Entirely)</span>
+          </Button>
+
           <Button
             variant="outline"
             onClick={onClose}
-            disabled={isLoggingOut}
-            className="w-1/2 font-bold text-slate-700"
+            className="w-full font-bold text-slate-600 text-xs py-2"
           >
             Cancel
-          </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isLoggingOut}
-            className="w-1/2 bg-red-600 hover:bg-red-700 text-white font-extrabold shadow-md shadow-red-900/20"
-          >
-            <LogOut className="w-4 h-4 mr-1.5" />
-            {isLoggingOut ? 'Signing out...' : 'Yes, Sign Out'}
           </Button>
         </div>
       </div>

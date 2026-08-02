@@ -10,6 +10,8 @@ interface AuthContextType {
   roleCategory: UserRoleCategory | null;
   loading: boolean;
   logout: () => Promise<void>;
+  logoutAccount: () => Promise<void>;
+  lockTerminal: () => void;
   hasPermission: (permission: PermissionKey | UserRole) => boolean;
   refreshProfile: () => Promise<void>;
   setUserProfile: (profile: UserProfile | null) => void;
@@ -20,6 +22,8 @@ const AuthContext = createContext<AuthContextType>({
   roleCategory: null,
   loading: true,
   logout: async () => {},
+  logoutAccount: async () => {},
+  lockTerminal: () => {},
   hasPermission: () => false,
   refreshProfile: async () => {},
   setUserProfile: () => {},
@@ -78,7 +82,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const logout = async () => {
+  const lockTerminal = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('terminal_unlocked');
+        sessionStorage.removeItem('terminal_unlocked_user');
+      } catch {}
+      window.location.replace('/terminal-login');
+    }
+  };
+
+  const logoutAccount = async () => {
     try {
       await authService.logout();
     } catch (e) {
@@ -92,6 +106,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {}
         window.location.replace('/login');
       }
+    }
+  };
+
+  const logout = async () => {
+    if (user?.role === 'platform_owner') {
+      await logoutAccount();
+    } else {
+      lockTerminal();
     }
   };
 
@@ -110,6 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         roleCategory,
         loading,
         logout,
+        logoutAccount,
+        lockTerminal,
         hasPermission,
         refreshProfile,
         setUserProfile: (profile) => setUser(profile),
