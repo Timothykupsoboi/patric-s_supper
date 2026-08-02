@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import {
   LayoutDashboard,
   Store,
@@ -94,9 +95,7 @@ export function PlatformSidebar() {
       <div className="p-4 border-t border-slate-800/80 bg-slate-900/40">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center border border-indigo-400/30">
-              {user?.name?.slice(0, 1) || 'P'}
-            </div>
+            <UserAvatar user={user} size="sm" shape="square" />
             <div className="truncate max-w-[120px]">
               <p className="text-xs font-extrabold text-white truncate">{user?.name || 'Platform Owner'}</p>
               <p className="text-[9px] text-indigo-400 truncate">{user?.email || 'admin@saas.com'}</p>

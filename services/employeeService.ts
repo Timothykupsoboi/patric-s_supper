@@ -22,7 +22,16 @@ export const employeeService = {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+
+    // photo_url is NOT a DB column — inject from localStorage for each employee
+    const rows = (data || []) as UserProfile[];
+    if (typeof window !== 'undefined') {
+      return rows.map((emp) => ({
+        ...emp,
+        photo_url: localStorage.getItem(`profile_photo_${emp.id}`) || undefined,
+      }));
+    }
+    return rows;
   },
 
   async getAvailableRoles(): Promise<RoleOption[]> {

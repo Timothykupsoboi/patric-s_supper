@@ -3,6 +3,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { ShieldCheck, Search, Bell, Activity, Sparkles } from 'lucide-react';
 
 export function PlatformHeader() {
@@ -42,9 +43,7 @@ export function PlatformHeader() {
             <p className="text-xs font-extrabold text-white leading-tight">{user?.name || 'Platform Owner'}</p>
             <p className="text-[10px] text-indigo-400 font-mono font-semibold uppercase">Global SaaS Admin</p>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white font-black text-xs shadow-md border border-indigo-400/30">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
+          <UserAvatar user={user} size="md" shape="square" className="border border-indigo-400/30" />
         </div>
       </div>
     </header>

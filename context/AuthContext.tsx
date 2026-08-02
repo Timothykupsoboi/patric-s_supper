@@ -169,12 +169,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setTerminalEmployee = (emp: UserProfile) => {
-    setTerminalUser(emp);
+    // Inject photo_url from localStorage so it persists in the terminal session
+    const enrichedEmp: UserProfile = {
+      ...emp,
+      photo_url:
+        typeof window !== 'undefined'
+          ? localStorage.getItem(`profile_photo_${emp.id}`) || emp.photo_url || undefined
+          : emp.photo_url,
+    };
+    setTerminalUser(enrichedEmp);
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.setItem('terminal_unlocked', 'true');
         sessionStorage.setItem('terminal_unlocked_user', emp.id);
-        sessionStorage.setItem('terminal_active_employee_data', JSON.stringify(emp));
+        sessionStorage.setItem('terminal_active_employee_data', JSON.stringify(enrichedEmp));
       } catch {}
     }
     // Audit Terminal Session Unlock

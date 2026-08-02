@@ -7,6 +7,7 @@ import { employeeService } from '@/services/employeeService';
 import { useAppDispatch } from '@/store';
 import { unlockTerminal } from '@/store/authSlice';
 import { UserProfile } from '@/types';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import {
   Lock,
   ShieldCheck,
@@ -53,23 +54,7 @@ function roleColor(role?: string) {
 // ─── Employee Avatar ─────────────────────────────────────────────────────────
 
 function EmployeeAvatar({ emp, size = 'md' }: { emp: UserProfile; size?: 'sm' | 'md' }) {
-  const sz = size === 'sm' ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-xs';
-  if (emp.photo_url) {
-    return (
-      <img
-        src={emp.photo_url}
-        alt={emp.name}
-        className={`${sz} rounded-full object-cover flex-shrink-0 border border-slate-700`}
-      />
-    );
-  }
-  return (
-    <div
-      className={`${sz} rounded-full bg-gradient-to-br ${roleColor(emp.role)} flex items-center justify-center font-extrabold text-white flex-shrink-0 border border-white/10`}
-    >
-      {getInitials(emp.name)}
-    </div>
-  );
+  return <UserAvatar user={emp} size={size === 'sm' ? 'sm' : 'md'} />;
 }
 
 // ─── Employee Dropdown ───────────────────────────────────────────────────────
@@ -502,9 +487,7 @@ export default function TerminalLoginPage() {
             />
           ) : (
             <div className="flex items-center space-x-3 py-1">
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-extrabold text-xs">
-                {user.name.charAt(0)}
-              </div>
+              <UserAvatar user={user} size="md" />
               <div>
                 <p className="text-xs font-extrabold text-white">{user.name}</p>
                 <p className="text-[10px] text-slate-400">{user.email}</p>
