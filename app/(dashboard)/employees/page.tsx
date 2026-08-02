@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeeService } from '@/services/employeeService';
+import { authService } from '@/services/authService';
 import { auditService } from '@/services/auditService';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,13 @@ export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const { user, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<'employees' | 'audit_logs'>('employees');
+
+  // Add Employee State
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addRole, setAddRole] = useState<UserRole>('cashier');
 
   // Edit Employee State
   const [editEmployee, setEditEmployee] = useState<UserProfile | null>(null);
@@ -38,6 +46,17 @@ export default function EmployeesPage() {
     enabled: isManagerOrAbove,
   });
 
+  const createStaffMutation = useMutation({
+    mutationFn: (data: any) => authService.register(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setIsAddOpen(false);
+      setAddName('');
+      setAddEmail('');
+      setAddPassword('');
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<UserProfile> }) =>
       employeeService.updateEmployee(id, updates),
@@ -46,6 +65,17 @@ export default function EmployeesPage() {
       setEditEmployee(null);
     },
   });
+
+  const handleCreateStaff = (e: React.FormEvent) => {
+    e.preventDefault();
+    createStaffMutation.mutate({
+      name: addName,
+      email: addEmail,
+      password: addPassword,
+      role: addRole,
+      supermarket_id: user?.supermarket_id || '00000000-0000-0000-0000-000000000001',
+    });
+  };
 
   const handleSaveEmployee = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +86,6 @@ export default function EmployeesPage() {
     });
   };
 
-  // RBAC Access Guard: Block cashiers from managing users
   if (!isManagerOrAbove) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-slate-200">
@@ -81,10 +110,10 @@ export default function EmployeesPage() {
           <p className="text-xs text-slate-500 mt-0.5">Manage staff roles, terminal PIN shift credentials, and audit system activity logs</p>
         </div>
         <div className="flex space-x-2 mt-3 sm:mt-0">
-          <Badge variant="info" className="text-xs py-1 px-3">
-            <Shield className="w-3.5 h-3.5 mr-1" />
-            Active Role: {user?.role || 'Manager'}
-          </Badge>
+          <Button onClick={() => setIsAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 font-bold text-xs">
+            <Plus className="w-4 h-4 mr-1.5" />
+            + Add Staff Member
+          </Button>
         </div>
       </div>
 
@@ -177,8 +206,8 @@ export default function EmployeesPage() {
                 <tr>
                   <th className="p-3">Timestamp</th>
                   <th className="p-3">User Action</th>
-                  <th className="p-3">Entity Type</th>
-                  <th className="p-3">Entity ID</th>
+                  <th className="p-3">Entity / Table</th>
+                  <th className="p-3">Record ID</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -189,12 +218,12 @@ export default function EmployeesPage() {
                     </td>
                   </tr>
                 ) : (
-                  auditLogs.map((log) => (
+                  auditLogs.map((log: any) => (
                     <tr key={log.id} className="hover:bg-slate-50">
                       <td className="p-3 text-slate-400">{formatDateTime(log.created_at)}</td>
                       <td className="p-3 font-bold text-slate-900">{log.action}</td>
-                      <td className="p-3 uppercase font-extrabold text-blue-600">{log.entity_type}</td>
-                      <td className="p-3 font-mono text-slate-500">{log.entity_id || '-'}</td>
+                      <td className="p-3 uppercase font-extrabold text-blue-600">{log.table_name || log.entity_type}</td>
+                      <td className="p-3 font-mono text-slate-500">{log.record_id || log.entity_id || '-'}</td>
                     </tr>
                   ))
                 )}
@@ -203,6 +232,32 @@ export default function EmployeesPage() {
           </div>
         </Card>
       )}
+
+      {/* Add Staff Modal */}
+      <Dialog isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="Add New Staff Member">
+        <form onSubmit={handleCreateStaff} className="space-y-3">
+          <Input label="Full Name" value={addName} onChange={(e) => setAddName(e.target.value)} required />
+          <Input label="Email Address" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} required />
+          <Input label="Initial Password" type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Role</label>
+            <select
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value as UserRole)}
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+            >
+              <option value="cashier">Cashier</option>
+              <option value="store_keeper">Store Keeper</option>
+              <option value="accountant">Accountant</option>
+              <option value="manager">Manager</option>
+              <option value="owner">Organization Owner</option>
+            </select>
+          </div>
+          <Button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-700 font-bold" disabled={createStaffMutation.isPending}>
+            {createStaffMutation.isPending ? 'Registering...' : 'Save Staff Account'}
+          </Button>
+        </form>
+      </Dialog>
 
       {/* Edit Role & PIN Modal */}
       <Dialog isOpen={!!editEmployee} onClose={() => setEditEmployee(null)} title={`Edit Staff: ${editEmployee?.name}`}>
