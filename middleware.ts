@@ -79,7 +79,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 3. For authenticated users accessing /login, redirect automatically based on profile role
+  // 3. For authenticated users accessing /login, redirect automatically
   if (pathname === '/login') {
     try {
       const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -101,7 +101,7 @@ export async function middleware(request: NextRequest) {
       }
     } catch {}
 
-    return redirectWithCookies(new URL('/dashboard', request.url));
+    return redirectWithCookies(new URL('/terminal-login', request.url));
   }
 
   return response;

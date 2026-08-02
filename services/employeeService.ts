@@ -29,10 +29,10 @@ export const employeeService = {
     try {
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_available_employee_roles');
       if (!rpcError && rpcData && rpcData.length > 0) {
-        return rpcData;
+        return rpcData.filter((r: RoleOption) => r.role_name !== 'platform_owner');
       }
     } catch {
-      // safe fallback to database table query
+      // safe fallback
     }
 
     const { data: dbData } = await supabase
@@ -63,10 +63,12 @@ export const employeeService = {
       });
     }
 
-    return Array.from(roleSet).map((r) => ({
-      role_name: r,
-      role_label: r.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-    }));
+    return Array.from(roleSet)
+      .filter((r) => r !== 'platform_owner')
+      .map((r) => ({
+        role_name: r,
+        role_label: r.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      }));
   },
 
   async toggleStatus(id: string, currentIsActive: boolean): Promise<UserProfile> {
@@ -85,9 +87,49 @@ export const employeeService = {
     return data;
   },
 
+  async verifyPin(pin: string, supermarketId?: string, employeeId?: string): Promise<UserProfile | null> {
+    const supabase = createClient();
+    let query = supabase
+      .from('users')
+      .select('*')
+      .eq('pin', pin)
+      .eq('is_active', true)
+      .eq('deleted', false);
+
+    if (supermarketId) {
+      query = query.eq('supermarket_id', supermarketId);
+    }
+    if (employeeId) {
+      query = query.eq('id', employeeId);
+    }
+
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return null;
+    return data[0];
+  },
+
+  async updatePin(id: string, newPin: string | null): Promise<UserProfile> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        pin: newPin || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async disablePin(id: string): Promise<UserProfile> {
+    return this.updatePin(id, null);
+  },
+
   async resetEmployeePassword(id: string, newPassword: string): Promise<void> {
     const supabase = createClient();
-    // Update user password timestamp or auth record
     const { error } = await supabase
       .from('users')
       .update({
@@ -96,20 +138,6 @@ export const employeeService = {
       .eq('id', id);
 
     if (error) throw error;
-  },
-
-  async verifyPin(pin: string): Promise<UserProfile | null> {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('pin', pin)
-      .eq('is_active', true)
-      .eq('deleted', false)
-      .single();
-
-    if (error || !data) return null;
-    return data;
   },
 
   async updateEmployee(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {

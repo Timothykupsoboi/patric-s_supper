@@ -121,6 +121,19 @@ export default function EmployeesPage() {
     },
   });
 
+  // PIN Management State
+  const [pinModalEmployee, setPinModalEmployee] = useState<UserProfile | null>(null);
+  const [newPinValue, setNewPinValue] = useState('');
+
+  const updatePinMutation = useMutation({
+    mutationFn: ({ id, pin }: { id: string; pin: string | null }) => employeeService.updatePin(id, pin),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setPinModalEmployee(null);
+      setNewPinValue('');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => employeeService.deleteEmployee(id),
     onSuccess: () => {
@@ -312,6 +325,21 @@ export default function EmployeesPage() {
                               Suspend
                             </>
                           )}
+                        </Button>
+
+                        {/* Manage PIN */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPinModalEmployee(emp);
+                            setNewPinValue(emp.pin || '');
+                          }}
+                          className="text-[11px] font-bold py-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                          title="Manage Terminal PIN"
+                        >
+                          <KeyRound className="w-3.5 h-3.5 mr-1" />
+                          PIN
                         </Button>
 
                         {/* Reset Password */}
@@ -530,6 +558,57 @@ export default function EmployeesPage() {
             {resetPasswordMutation.isPending ? 'Resetting Password...' : 'Confirm Reset Password'}
           </Button>
         </form>
+      </Dialog>
+
+      {/* 4. PIN Management Modal */}
+      <Dialog
+        isOpen={!!pinModalEmployee}
+        onClose={() => setPinModalEmployee(null)}
+        title={`Terminal PIN Management: ${pinModalEmployee?.name}`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Configure or disable the Terminal Unlock PIN for <span className="font-extrabold text-slate-900">{pinModalEmployee?.name}</span> ({pinModalEmployee?.role?.replace('_', ' ')}).
+          </p>
+
+          <Input
+            label="Terminal PIN (4-6 Numeric Digits)"
+            type="password"
+            value={newPinValue}
+            onChange={(e) => setNewPinValue(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="e.g. 1234"
+            maxLength={6}
+          />
+
+          <div className="flex space-x-2 pt-2">
+            <Button
+              onClick={() => {
+                if (!newPinValue || newPinValue.length < 4) {
+                  alert('Please enter a valid 4-6 digit numeric PIN.');
+                  return;
+                }
+                updatePinMutation.mutate({ id: pinModalEmployee!.id, pin: newPinValue });
+              }}
+              className="w-1/2 bg-blue-600 hover:bg-blue-700 font-extrabold text-xs"
+              disabled={updatePinMutation.isPending}
+            >
+              {pinModalEmployee?.pin ? 'Change / Save PIN' : 'Create Terminal PIN'}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm(`Disable and clear Terminal PIN for "${pinModalEmployee?.name}"?`)) {
+                  updatePinMutation.mutate({ id: pinModalEmployee!.id, pin: null });
+                }
+              }}
+              className="w-1/2 text-red-600 border-red-200 hover:bg-red-50 font-extrabold text-xs"
+              disabled={updatePinMutation.isPending}
+            >
+              Disable PIN
+            </Button>
+          </div>
+        </div>
       </Dialog>
     </div>
   );

@@ -23,36 +23,19 @@ export default function LoginPage() {
   // Auto redirect if already authenticated
   useEffect(() => {
     if (user) {
-      const targetPath = getRedirectPathByRole(user.role);
-      router.push(targetPath);
+      if (user.role === 'platform_owner') {
+        router.push('/admin/platform');
+      } else {
+        router.push('/terminal-login');
+      }
     }
   }, [user, router]);
 
   const getRedirectPathByRole = (role?: string): string => {
-    if (!role) return '/dashboard';
-    const category = authService.getRoleCategory(role as any);
-    if (category === 'Platform Owner') {
+    if (role === 'platform_owner') {
       return '/admin/platform';
     }
-    if (category === 'Supermarket Owner') {
-      return '/dashboard';
-    }
-    // Employee roles routing:
-    switch (role) {
-      case 'cashier':
-        return '/pos';
-      case 'store_keeper':
-      case 'inventory_manager':
-        return '/inventory';
-      case 'accountant':
-        return '/reports';
-      case 'procurement_officer':
-        return '/suppliers';
-      case 'customer_service':
-        return '/customers';
-      default:
-        return '/dashboard';
-    }
+    return '/terminal-login';
   };
 
   const handleLogin = async (e: React.FormEvent) => {
