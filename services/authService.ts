@@ -96,9 +96,30 @@ export const authService = {
       password,
     });
 
-    if (error) throw error;
+    if (error) throw new Error('Invalid email or password.');
 
     const profile = await this.getUserProfile(data.user.id);
+    if (!profile) {
+      throw new Error('Account profile not found. Please contact your administrator.');
+    }
+
+    if (profile.is_active === false) {
+      throw new Error('Your account has been disabled. Please contact your administrator.');
+    }
+
+    // Check if supermarket is suspended for non-platform users
+    if (profile.supermarket_id && profile.role !== 'platform_owner') {
+      const { data: supermarket } = await supabase
+        .from('supermarkets')
+        .select('subscription_status')
+        .eq('id', profile.supermarket_id)
+        .maybeSingle();
+
+      if (supermarket && supermarket.subscription_status === 'suspended') {
+        throw new Error('Your supermarket account is currently suspended.');
+      }
+    }
+
     return { session: data.session, user: data.user, profile };
   },
 
