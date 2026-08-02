@@ -23,6 +23,8 @@ export type UserRoleCategory = 'Platform Owner' | 'Supermarket Owner' | 'Employe
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   platform_owner: 100,
   supermarket_owner: 85,
+  super_admin: 85,
+  owner: 85,
   branch_manager: 65,
   manager: 60,
   supervisor: 58,
@@ -43,6 +45,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
     'branches.manage', 'settings.manage', 'platform.manage',
   ],
   supermarket_owner: [
+    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
+    'branches.manage', 'settings.manage',
+  ],
+  super_admin: [
+    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
+    'branches.manage', 'settings.manage',
+  ],
+  owner: [
     'products.view', 'products.create', 'products.edit', 'products.delete',
     'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
     'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
@@ -204,22 +218,22 @@ export const authService = {
     return data;
   },
 
-  getRoleCategory(role: UserRole): UserRoleCategory {
+  getRoleCategory(role: UserRole | string): UserRoleCategory {
     if (role === 'platform_owner') return 'Platform Owner';
-    if (role === 'supermarket_owner') return 'Supermarket Owner';
+    if (role === 'supermarket_owner' || role === 'super_admin' || role === 'owner') return 'Supermarket Owner';
     return 'Employee';
   },
 
-  isGlobalRole(role: UserRole): boolean {
+  isGlobalRole(role: UserRole | string): boolean {
     return role === 'platform_owner';
   },
 
-  isSupermarketOwner(role: UserRole): boolean {
-    return role === 'supermarket_owner';
+  isSupermarketOwner(role: UserRole | string): boolean {
+    return role === 'supermarket_owner' || role === 'super_admin' || role === 'owner';
   },
 
-  isEmployeeRole(role: UserRole): boolean {
-    return role !== 'platform_owner' && role !== 'supermarket_owner';
+  isEmployeeRole(role: UserRole | string): boolean {
+    return role !== 'platform_owner' && role !== 'supermarket_owner' && role !== 'super_admin' && role !== 'owner';
   },
 
   hasRolePermission(userRole: UserRole, requiredRole: UserRole): boolean {

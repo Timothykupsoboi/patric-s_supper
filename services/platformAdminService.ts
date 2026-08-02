@@ -164,90 +164,20 @@ export const platformAdminService = {
   },
 
   async createSupermarketTenant(payload: CreateSupermarketPayload): Promise<Supermarket> {
-    const supabase = createClient();
-    const supermarketId = crypto.randomUUID();
-    const branchId = crypto.randomUUID();
-    const ownerUserId = crypto.randomUUID();
-    const licenseKey = `LIC-PATRICK-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
-
-    // 1. Create Supermarket Record
-    const { data: supermarket, error: smError } = await supabase
-      .from('supermarkets')
-      .insert([
-        {
-          id: supermarketId,
-          name: payload.name,
-          subscription_plan: payload.subscription_plan || 'starter',
-          subscription_status: 'active',
-          max_branches: payload.subscription_plan === 'enterprise' ? 999 : payload.subscription_plan === 'professional' ? 10 : 2,
-          license_key: licenseKey,
-          logo_url: payload.logo_url,
-          address: payload.business_address,
-          phone: payload.owner_phone,
-          email: payload.owner_email,
-        },
-      ])
-      .select()
-      .single();
-
-    if (smError || !supermarket) throw smError || new Error('Failed to create supermarket record');
-
-    // 2. Create Default Branch
-    const { data: branch, error: branchError } = await supabase
-      .from('branches')
-      .insert([
-        {
-          id: branchId,
-          supermarket_id: supermarket.id,
-          name: payload.default_branch_name || 'Main Branch',
-          location: payload.business_address || 'HQ',
-        },
-      ])
-      .select()
-      .single();
-
-    if (branchError || !branch) throw branchError || new Error('Failed to create default branch');
-
-    // 3. Create Supermarket Owner in Users table
-    const { error: userError } = await supabase.from('users').insert([
-      {
-        id: ownerUserId,
-        supermarket_id: supermarket.id,
-        branch_id: branch.id,
-        name: payload.owner_name,
-        email: payload.owner_email,
-        phone: payload.owner_phone,
-        role: 'supermarket_owner',
-        is_active: true,
+    const res = await fetch('/api/admin/platform/supermarkets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    ]);
+      body: JSON.stringify(payload),
+    });
 
-    if (userError) {
-      console.warn('Warning creating user record in public.users:', userError.message);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to create supermarket tenant');
     }
 
-    // 4. Log in Audit Log
-    await supabase.from('audit_logs').insert([
-      {
-        supermarket_id: supermarket.id,
-        user_id: ownerUserId,
-        action: `Supermarket Tenant Registered: ${payload.name} (Owner: ${payload.owner_email})`,
-        table_name: 'supermarkets',
-        record_id: supermarket.id,
-      },
-    ]);
-
-    return {
-      ...supermarket,
-      owner_name: payload.owner_name,
-      owner_email: payload.owner_email,
-      owner_phone: payload.owner_phone,
-      country: payload.country,
-      currency: payload.currency,
-      timezone: payload.timezone,
-      business_address: payload.business_address,
-      registration_number: payload.registration_number,
-    };
+    return data.supermarket;
   },
 
   async resetOwnerPassword(ownerId: string): Promise<void> {

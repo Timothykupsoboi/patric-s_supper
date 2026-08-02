@@ -1,6 +1,6 @@
 export type GlobalRole = 'platform_owner';
 
-export type SupermarketRole = 'supermarket_owner';
+export type SupermarketRole = 'supermarket_owner' | 'super_admin' | 'owner';
 
 export type EmployeeRole =
   | 'branch_manager'

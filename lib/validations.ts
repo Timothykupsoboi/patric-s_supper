@@ -11,7 +11,6 @@ export const productSchema = z.object({
   minimum_stock: z.number().min(0).default(5),
   tax_rate: z.number().min(0).default(16),
   expiry_date: z.string().optional().nullable(),
-  category_id: z.string().uuid().optional().nullable(),
   supplier_id: z.string().uuid().optional().nullable(),
 });
 

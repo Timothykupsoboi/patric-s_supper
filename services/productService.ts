@@ -6,7 +6,7 @@ export const productService = {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('products')
-      .select('*, category:categories(*)')
+      .select('*')
       .eq('deleted', false)
       .order('name', { ascending: true });
 
@@ -47,9 +47,6 @@ export const productService = {
       tax_rate: product.tax_rate ?? product.vat_rate ?? 16,
     };
 
-    if (product.category_id && product.category_id.trim() !== '') {
-      payload.category_id = product.category_id;
-    }
     if (product.supplier_id && product.supplier_id.trim() !== '') {
       payload.supplier_id = product.supplier_id;
     }

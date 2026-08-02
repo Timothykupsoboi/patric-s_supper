@@ -139,7 +139,6 @@ export const saleService = {
       .from('sales')
       .update({
         hold_status: 'refunded',
-        payment_status: 'refunded',
         updated_at: new Date().toISOString(),
       })
       .eq('id', saleId)

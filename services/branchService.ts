@@ -31,9 +31,10 @@ export const branchService = {
       .from('branches')
       .insert([
         {
-          supermarket_id: branch.supermarket_id || '00000000-0000-0000-0000-000000000001',
+          id: crypto.randomUUID(),
+          supermarket_id: branch.supermarket_id,
           name: branch.name,
-          location: branch.location || 'Nairobi CBD',
+          location: branch.location || 'HQ',
         },
       ])
       .select()
