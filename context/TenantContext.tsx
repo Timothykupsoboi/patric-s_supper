@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { branchService, Branch } from '@/services/branchService';
+import { useAuth } from '@/context/AuthContext';
 
 interface TenantContextType {
   supermarketId: string;
@@ -11,8 +12,10 @@ interface TenantContextType {
   refreshBranches: () => Promise<void>;
 }
 
+const DEFAULT_SUPERMARKET_ID = '00000000-0000-0000-0000-000000000001';
+
 const TenantContext = createContext<TenantContextType>({
-  supermarketId: '00000000-0000-0000-0000-000000000001',
+  supermarketId: DEFAULT_SUPERMARKET_ID,
   activeBranch: null,
   branches: [],
   setBranch: () => {},
@@ -20,7 +23,9 @@ const TenantContext = createContext<TenantContextType>({
 });
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const supermarketId = '00000000-0000-0000-0000-000000000001';
+  const { user } = useAuth();
+  const supermarketId = user?.supermarket_id || DEFAULT_SUPERMARKET_ID;
+
   const [branches, setBranches] = useState<Branch[]>([]);
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null);
 
@@ -37,8 +42,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    refreshBranches();
-  }, []);
+    if (supermarketId) {
+      refreshBranches();
+    }
+  }, [supermarketId]);
 
   return (
     <TenantContext.Provider
