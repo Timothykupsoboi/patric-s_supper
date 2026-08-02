@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Plus, Search, History, CreditCard, Edit3 } from 'lucide-react';
-import { Customer, CustomerCreditLog } from '@/types';
+import { Plus, Search, History, CreditCard, Edit3, Trash2, ShoppingBag } from 'lucide-react';
+import { Customer, CustomerCreditLog, Sale } from '@/types';
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
@@ -39,6 +39,12 @@ export default function CustomersPage() {
     enabled: !!selectedCustomer,
   });
 
+  const { data: purchaseHistory = [] } = useQuery({
+    queryKey: ['customerPurchases', selectedCustomer?.id],
+    queryFn: () => (selectedCustomer ? customerService.getCustomerPurchaseHistory(selectedCustomer.id) : Promise.resolve([])),
+    enabled: !!selectedCustomer,
+  });
+
   const createMutation = useMutation({
     mutationFn: (newCust: any) => customerService.createCustomer(newCust),
     onSuccess: () => {
@@ -47,6 +53,13 @@ export default function CustomersPage() {
       setName('');
       setPhone('');
       setEmail('');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => customerService.deleteCustomer(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
   });
 
@@ -155,7 +168,7 @@ export default function CustomersPage() {
                         <Badge variant="success">Clear</Badge>
                       )}
                     </td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right space-x-1">
                       <Button
                         variant="outline"
                         size="sm"
@@ -163,9 +176,21 @@ export default function CustomersPage() {
                           setSelectedCustomer(c);
                           setEditLimit(lim.toString());
                         }}
-                        className="font-bold text-[11px]"
+                        className="font-bold text-[11px] py-1"
                       >
                         View Profile & Debt
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Delete customer profile "${c.name}"?`)) {
+                            deleteMutation.mutate(c.id);
+                          }
+                        }}
+                        className="font-bold text-[11px] py-1 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </td>
                   </tr>
@@ -240,28 +265,55 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          <div>
-            <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center">
-              <History className="w-4 h-4 mr-1 text-slate-600" /> Credit & Repayment Log
-            </h4>
-            <div className="max-h-40 overflow-y-auto border rounded-xl divide-y text-xs">
-              {customerLogs.length === 0 ? (
-                <p className="p-3 text-center text-slate-400">No credit transaction logs recorded yet.</p>
-              ) : (
-                customerLogs.map((log) => (
-                  <div key={log.id} className="p-2.5 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-slate-900 capitalize">{log.type}</p>
-                      <p className="text-[10px] text-slate-400">{formatDateTime(log.created_at)}</p>
+          {/* Credit Log & Purchase History */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center">
+                <History className="w-4 h-4 mr-1 text-slate-600" /> Credit & Debt Log
+              </h4>
+              <div className="max-h-40 overflow-y-auto border rounded-xl divide-y text-xs">
+                {customerLogs.length === 0 ? (
+                  <p className="p-3 text-center text-slate-400">No credit transaction logs recorded yet.</p>
+                ) : (
+                  customerLogs.map((log) => (
+                    <div key={log.id} className="p-2.5 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-slate-900 capitalize">{log.type}</p>
+                        <p className="text-[10px] text-slate-400">{formatDateTime(log.created_at)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-black ${log.type === 'charge' ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {log.type === 'charge' ? `+${formatCurrency(log.amount)}` : `-${formatCurrency(log.amount)}`}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-black ${log.type === 'charge' ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {log.type === 'charge' ? `+${formatCurrency(log.amount)}` : `-${formatCurrency(log.amount)}`}
-                      </p>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center">
+                <ShoppingBag className="w-4 h-4 mr-1 text-blue-600" /> Purchase History
+              </h4>
+              <div className="max-h-40 overflow-y-auto border rounded-xl divide-y text-xs">
+                {purchaseHistory.length === 0 ? (
+                  <p className="p-3 text-center text-slate-400">No previous purchase records found.</p>
+                ) : (
+                  purchaseHistory.map((s) => (
+                    <div key={s.id} className="p-2.5 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-slate-900">{s.invoice_number || s.id.slice(0, 8)}</p>
+                        <p className="text-[10px] text-slate-400">{formatDateTime(s.created_at)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-slate-900">{formatCurrency(s.total_amount)}</p>
+                        <span className="text-[9px] uppercase font-bold text-blue-600">{s.payment_method}</span>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>

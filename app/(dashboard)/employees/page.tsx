@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeeService } from '@/services/employeeService';
+import { branchService } from '@/services/branchService';
 import { authService } from '@/services/authService';
 import { auditService } from '@/services/auditService';
 import { useAuth } from '@/context/AuthContext';
@@ -12,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/utils';
-import { UserCheck, Shield, KeyRound, Activity, ShieldAlert, Plus, Edit3 } from 'lucide-react';
+import { UserCheck, Shield, KeyRound, Activity, ShieldAlert, Plus, Edit3, Trash2, Building2 } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
 
 export default function EmployeesPage() {
@@ -26,17 +27,25 @@ export default function EmployeesPage() {
   const [addEmail, setAddEmail] = useState('');
   const [addPassword, setAddPassword] = useState('');
   const [addRole, setAddRole] = useState<UserRole>('cashier');
+  const [addBranchId, setAddBranchId] = useState('');
 
   // Edit Employee State
   const [editEmployee, setEditEmployee] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<UserRole>('cashier');
   const [pin, setPin] = useState('');
+  const [branchId, setBranchId] = useState('');
 
   const isManagerOrAbove = hasPermission('manager');
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeeService.getEmployees(),
+    enabled: isManagerOrAbove,
+  });
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches', user?.supermarket_id],
+    queryFn: () => branchService.getBranches(user?.supermarket_id || '00000000-0000-0000-0000-000000000001'),
     enabled: isManagerOrAbove,
   });
 
@@ -54,6 +63,7 @@ export default function EmployeesPage() {
       setAddName('');
       setAddEmail('');
       setAddPassword('');
+      setAddBranchId('');
     },
   });
 
@@ -66,6 +76,13 @@ export default function EmployeesPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => employeeService.deleteEmployee(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+
   const handleCreateStaff = (e: React.FormEvent) => {
     e.preventDefault();
     createStaffMutation.mutate({
@@ -73,6 +90,7 @@ export default function EmployeesPage() {
       email: addEmail,
       password: addPassword,
       role: addRole,
+      branch_id: addBranchId || undefined,
       supermarket_id: user?.supermarket_id || '00000000-0000-0000-0000-000000000001',
     });
   };
@@ -82,7 +100,7 @@ export default function EmployeesPage() {
     if (!editEmployee) return;
     updateMutation.mutate({
       id: editEmployee.id,
-      updates: { role, pin },
+      updates: { role, pin, branch_id: branchId || undefined },
     });
   };
 
@@ -107,7 +125,7 @@ export default function EmployeesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Staff & RBAC Management</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Manage staff roles, terminal PIN shift credentials, and audit system activity logs</p>
+          <p className="text-xs text-slate-500 mt-0.5">Manage staff roles, terminal PIN shift credentials, branch assignments, and audit logs</p>
         </div>
         <div className="flex space-x-2 mt-3 sm:mt-0">
           <Button onClick={() => setIsAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 font-bold text-xs">
@@ -152,42 +170,62 @@ export default function EmployeesPage() {
                   <th className="p-3">Staff Name</th>
                   <th className="p-3">Email Address</th>
                   <th className="p-3">Assigned Role</th>
+                  <th className="p-3">Branch Location</th>
                   <th className="p-3">Terminal PIN</th>
                   <th className="p-3">Account Status</th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {employees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-extrabold text-slate-900">{emp.name}</td>
-                    <td className="p-3 text-slate-500">{emp.email}</td>
-                    <td className="p-3">
-                      <span className="uppercase font-black text-blue-600 px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
-                        {emp.role}
-                      </span>
-                    </td>
-                    <td className="p-3 font-mono font-bold tracking-widest text-slate-700">{emp.pin || '••••'}</td>
-                    <td className="p-3">
-                      <Badge variant="success">Active</Badge>
-                    </td>
-                    <td className="p-3 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditEmployee(emp);
-                          setRole(emp.role);
-                          setPin(emp.pin || '');
-                        }}
-                        className="text-[11px] font-bold"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 mr-1" />
-                        Edit Role & PIN
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {employees.map((emp) => {
+                  const assignedBranch = branches.find((b) => b.id === emp.branch_id);
+                  return (
+                    <tr key={emp.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-extrabold text-slate-900">{emp.name}</td>
+                      <td className="p-3 text-slate-500">{emp.email}</td>
+                      <td className="p-3">
+                        <span className="uppercase font-black text-blue-600 px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
+                          {emp.role}
+                        </span>
+                      </td>
+                      <td className="p-3 font-bold text-slate-700">
+                        {assignedBranch?.name || 'All Store Branches'}
+                      </td>
+                      <td className="p-3 font-mono font-bold tracking-widest text-slate-700">{emp.pin || '••••'}</td>
+                      <td className="p-3">
+                        <Badge variant="success">Active</Badge>
+                      </td>
+                      <td className="p-3 text-right space-x-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditEmployee(emp);
+                            setRole(emp.role);
+                            setPin(emp.pin || '');
+                            setBranchId(emp.branch_id || '');
+                          }}
+                          className="text-[11px] font-bold py-1"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 mr-1" />
+                          Edit Role & Branch
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm(`Remove staff account "${emp.name}"?`)) {
+                              deleteMutation.mutate(emp.id);
+                            }
+                          }}
+                          className="text-[11px] font-bold py-1 text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -253,6 +291,21 @@ export default function EmployeesPage() {
               <option value="owner">Organization Owner</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Assign Store Branch</label>
+            <select
+              value={addBranchId}
+              onChange={(e) => setAddBranchId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+            >
+              <option value="">-- All Store Branches --</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <Button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-700 font-bold" disabled={createStaffMutation.isPending}>
             {createStaffMutation.isPending ? 'Registering...' : 'Save Staff Account'}
           </Button>
@@ -278,6 +331,22 @@ export default function EmployeesPage() {
             </select>
           </div>
 
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Assign Store Branch</label>
+            <select
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+            >
+              <option value="">-- All Store Branches --</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <Input
             label="Terminal Shift Lock PIN (4-6 Digits)"
             type="password"
@@ -288,7 +357,7 @@ export default function EmployeesPage() {
           />
 
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 font-bold" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? 'Saving...' : 'Save Role & PIN'}
+            {updateMutation.isPending ? 'Saving...' : 'Save Role, Branch & PIN'}
           </Button>
         </form>
       </Dialog>

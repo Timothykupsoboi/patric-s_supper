@@ -89,6 +89,16 @@ export const customerService = {
     };
   },
 
+  async deleteCustomer(id: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('customers')
+      .update({ deleted: true, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
   async checkBorrowLimit(customerId: string, newBorrowAmount: number): Promise<{ allowed: boolean; message?: string; customer?: Customer }> {
     const customer = await this.getCustomerById(customerId);
     if (!customer) {
@@ -121,8 +131,6 @@ export const customerService = {
 
     if (fetchErr || !customer) throw fetchErr || new Error('Customer profile not found');
 
-    // Insert payment transaction log in customer_credits
-    // Trigger update_customer_credit_balance will automatically update customers.balance!
     const { error: creditErr } = await supabase.from('customer_credits').insert([
       {
         supermarket_id: customer.supermarket_id,

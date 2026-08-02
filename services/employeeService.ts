@@ -40,4 +40,14 @@ export const employeeService = {
     if (error) throw error;
     return data;
   },
+
+  async deleteEmployee(id: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('users')
+      .update({ deleted: true, is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
 };
