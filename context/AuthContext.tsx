@@ -3,19 +3,21 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UserProfile, UserRole } from '@/types';
-import { authService } from '@/services/authService';
+import { authService, UserRoleCategory, PermissionKey } from '@/services/authService';
 
 interface AuthContextType {
   user: UserProfile | null;
+  roleCategory: UserRoleCategory | null;
   loading: boolean;
   logout: () => Promise<void>;
-  hasPermission: (requiredRole: UserRole) => boolean;
+  hasPermission: (permission: PermissionKey | UserRole) => boolean;
   refreshProfile: () => Promise<void>;
   setUserProfile: (profile: UserProfile | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  roleCategory: null,
   loading: true,
   logout: async () => {},
   hasPermission: () => false,
@@ -26,6 +28,8 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const roleCategory: UserRoleCategory | null = user ? authService.getRoleCategory(user.role) : null;
 
   const refreshProfile = async () => {
     try {
@@ -84,15 +88,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const hasPermission = (requiredRole: UserRole): boolean => {
+  const hasPermission = (permission: PermissionKey | UserRole): boolean => {
     if (!user) return false;
-    return authService.hasRolePermission(user.role, requiredRole);
+    if (typeof permission === 'string' && permission.includes('.')) {
+      return authService.hasPermission(user.role, permission as PermissionKey);
+    }
+    return authService.hasRolePermission(user.role, permission as UserRole);
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        roleCategory,
         loading,
         logout,
         hasPermission,

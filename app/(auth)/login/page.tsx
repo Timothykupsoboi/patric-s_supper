@@ -19,21 +19,29 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [roleInfo, setRoleInfo] = useState<{ category: string; role: string } | null>(null);
 
   // Auto redirect if already authenticated
   useEffect(() => {
     if (user) {
+      const category = authService.getRoleCategory(user.role);
+      setRoleInfo({ category, role: user.role });
       const targetPath = getRedirectPathByRole(user.role);
       router.push(targetPath);
     }
   }, [user, router]);
 
   const getRedirectPathByRole = (role?: string): string => {
+    if (!role) return '/dashboard';
+    const category = authService.getRoleCategory(role as any);
+    if (category === 'Platform Owner') {
+      return '/admin/platform';
+    }
+    if (category === 'Supermarket Owner') {
+      return '/dashboard';
+    }
+    // Employee roles routing:
     switch (role) {
-      case 'platform_owner':
-      case 'platform_admin':
-      case 'super_admin':
-        return '/admin/platform';
       case 'cashier':
         return '/pos';
       case 'store_keeper':
@@ -45,10 +53,6 @@ export default function LoginPage() {
         return '/suppliers';
       case 'customer_service':
         return '/customers';
-      case 'owner':
-      case 'branch_manager':
-      case 'manager':
-      case 'sales_manager':
       default:
         return '/dashboard';
     }
@@ -57,6 +61,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setRoleInfo(null);
 
     if (!email || !email.includes('@')) {
       setError('Please enter a valid work email address.');
@@ -71,16 +76,23 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // 1. Supabase Auth login
       const res = await authService.login(email, password);
+
+      // 2. Determine user profile & role directly from database
       if (res.profile) {
         if (res.profile.is_active === false) {
           throw new Error('Your user account has been suspended by the administrator.');
         }
+
+        const category = authService.getRoleCategory(res.profile.role);
+        setRoleInfo({ category, role: res.profile.role });
         setUserProfile(res.profile);
+
         const targetPath = getRedirectPathByRole(res.profile.role);
         router.push(targetPath);
       } else {
-        router.push('/dashboard');
+        throw new Error('User profile not found in database. Please contact your system administrator.');
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials. Please check your email and password.';

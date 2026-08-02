@@ -1,11 +1,11 @@
-export type UserRole =
-  | 'platform_owner'
-  | 'platform_admin'
-  | 'super_admin'
-  | 'admin'
-  | 'owner'
+export type GlobalRole = 'platform_owner';
+
+export type SupermarketRole = 'supermarket_owner';
+
+export type EmployeeRole =
   | 'branch_manager'
   | 'manager'
+  | 'supervisor'
   | 'inventory_manager'
   | 'sales_manager'
   | 'accountant'
@@ -13,6 +13,8 @@ export type UserRole =
   | 'store_keeper'
   | 'customer_service'
   | 'cashier';
+
+export type UserRole = GlobalRole | SupermarketRole | EmployeeRole;
 
 export interface UserProfile {
   id: string;

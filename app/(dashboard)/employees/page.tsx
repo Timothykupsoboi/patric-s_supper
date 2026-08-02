@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeeService } from '@/services/employeeService';
+import { employeeService, RoleOption } from '@/services/employeeService';
 import { branchService } from '@/services/branchService';
 import { authService } from '@/services/authService';
 import { auditService } from '@/services/auditService';
@@ -13,13 +13,32 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/utils';
-import { UserCheck, Shield, KeyRound, Activity, ShieldAlert, Plus, Edit3, Trash2, Building2 } from 'lucide-react';
+import {
+  UserCheck,
+  UserX,
+  Shield,
+  KeyRound,
+  Activity,
+  ShieldAlert,
+  Plus,
+  Edit3,
+  Trash2,
+  Building2,
+  Lock,
+  RefreshCw,
+} from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const { user, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<'employees' | 'audit_logs'>('employees');
+
+  // Dynamic database roles state
+  const { data: dbRoles = [] } = useQuery({
+    queryKey: ['availableRoles'],
+    queryFn: () => employeeService.getAvailableRoles(),
+  });
 
   // Add Employee State
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -28,33 +47,42 @@ export default function EmployeesPage() {
   const [addPassword, setAddPassword] = useState('');
   const [addRole, setAddRole] = useState<UserRole>('cashier');
   const [addBranchId, setAddBranchId] = useState('');
+  const [addPin, setAddPin] = useState('');
 
   // Edit Employee State
   const [editEmployee, setEditEmployee] = useState<UserProfile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   const [role, setRole] = useState<UserRole>('cashier');
   const [pin, setPin] = useState('');
   const [branchId, setBranchId] = useState('');
 
-  const isManagerOrAbove = hasPermission('manager');
+  // Reset Password Modal State
+  const [resetEmployee, setResetEmployee] = useState<UserProfile | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+
+  const isOwnerOrManager = user?.role === 'supermarket_owner' || hasPermission('manager');
 
   const { data: employees = [] } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => employeeService.getEmployees(),
-    enabled: isManagerOrAbove,
+    queryKey: ['employees', user?.supermarket_id],
+    queryFn: () => employeeService.getEmployees(user?.supermarket_id),
+    enabled: isOwnerOrManager,
   });
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches', user?.supermarket_id],
     queryFn: () => branchService.getBranches(user?.supermarket_id || '00000000-0000-0000-0000-000000000001'),
-    enabled: isManagerOrAbove,
+    enabled: isOwnerOrManager,
   });
 
   const { data: auditLogs = [] } = useQuery({
     queryKey: ['auditLogs'],
     queryFn: () => auditService.getAuditLogs(50),
-    enabled: isManagerOrAbove,
+    enabled: isOwnerOrManager,
   });
 
+  // Mutations
   const createStaffMutation = useMutation({
     mutationFn: (data: any) => authService.register(data),
     onSuccess: () => {
@@ -64,6 +92,7 @@ export default function EmployeesPage() {
       setAddEmail('');
       setAddPassword('');
       setAddBranchId('');
+      setAddPin('');
     },
   });
 
@@ -73,6 +102,22 @@ export default function EmployeesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       setEditEmployee(null);
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: (emp: UserProfile) => employeeService.toggleStatus(emp.id, emp.is_active),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, pwd }: { id: string; pwd: string }) => employeeService.resetEmployeePassword(id, pwd),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setResetEmployee(null);
+      setResetPassword('');
     },
   });
 
@@ -92,6 +137,7 @@ export default function EmployeesPage() {
       role: addRole,
       branch_id: addBranchId || undefined,
       supermarket_id: user?.supermarket_id || '00000000-0000-0000-0000-000000000001',
+      pin: addPin || undefined,
     });
   };
 
@@ -100,11 +146,27 @@ export default function EmployeesPage() {
     if (!editEmployee) return;
     updateMutation.mutate({
       id: editEmployee.id,
-      updates: { role, pin, branch_id: branchId || undefined },
+      updates: {
+        name: editName,
+        email: editEmail,
+        phone: editPhone,
+        role,
+        pin: pin || undefined,
+        branch_id: branchId || undefined,
+      },
     });
   };
 
-  if (!isManagerOrAbove) {
+  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmployee || !resetPassword) return;
+    resetPasswordMutation.mutate({
+      id: resetEmployee.id,
+      pwd: resetPassword,
+    });
+  };
+
+  if (!isOwnerOrManager) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-slate-200">
         <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4 border border-red-200">
@@ -112,7 +174,7 @@ export default function EmployeesPage() {
         </div>
         <h2 className="text-xl font-extrabold text-slate-900">Access Restricted</h2>
         <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4">
-          Employee management and audit logging require Manager or Administrator role permissions.
+          Employee management and RBAC access control require Supermarket Owner or Manager permissions.
         </p>
         <Badge variant="danger">Role: {user?.role || 'Cashier'}</Badge>
       </div>
@@ -124,13 +186,15 @@ export default function EmployeesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Staff & RBAC Management</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Manage staff roles, terminal PIN shift credentials, branch assignments, and audit logs</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Supermarket Employee Management</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Create, edit, suspend, assign roles & branches, and reset credentials for staff members
+          </p>
         </div>
         <div className="flex space-x-2 mt-3 sm:mt-0">
           <Button onClick={() => setIsAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 font-bold text-xs">
             <Plus className="w-4 h-4 mr-1.5" />
-            + Add Staff Member
+            + Create Employee
           </Button>
         </div>
       </div>
@@ -138,7 +202,7 @@ export default function EmployeesPage() {
       {/* Tabs */}
       <div className="flex space-x-2 border-b border-slate-200 pb-2">
         {[
-          { id: 'employees', label: `Staff Accounts (${employees.length})`, icon: UserCheck },
+          { id: 'employees', label: `Supermarket Staff (${employees.length})`, icon: UserCheck },
           { id: 'audit_logs', label: `Activity Audit Logs (${auditLogs.length})`, icon: Activity },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -167,11 +231,11 @@ export default function EmployeesPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-700 font-bold uppercase border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Staff Name</th>
-                  <th className="p-3">Email Address</th>
-                  <th className="p-3">Assigned Role</th>
+                  <th className="p-3">Staff Member</th>
+                  <th className="p-3">Email & Contact</th>
+                  <th className="p-3">Assigned Role (DB)</th>
                   <th className="p-3">Branch Location</th>
-                  <th className="p-3">Terminal PIN</th>
+                  <th className="p-3">PIN</th>
                   <th className="p-3">Account Status</th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
@@ -179,13 +243,18 @@ export default function EmployeesPage() {
               <tbody className="divide-y divide-slate-100">
                 {employees.map((emp) => {
                   const assignedBranch = branches.find((b) => b.id === emp.branch_id);
+                  const isSuspended = emp.is_active === false;
+
                   return (
-                    <tr key={emp.id} className="hover:bg-slate-50">
+                    <tr key={emp.id} className={`hover:bg-slate-50 ${isSuspended ? 'bg-red-50/30' : ''}`}>
                       <td className="p-3 font-extrabold text-slate-900">{emp.name}</td>
-                      <td className="p-3 text-slate-500">{emp.email}</td>
+                      <td className="p-3 text-slate-500">
+                        <div>{emp.email}</div>
+                        {emp.phone && <div className="text-[10px] text-slate-400">{emp.phone}</div>}
+                      </td>
                       <td className="p-3">
-                        <span className="uppercase font-black text-blue-600 px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
-                          {emp.role}
+                        <span className="uppercase font-black text-blue-600 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px]">
+                          {emp.role ? emp.role.replace('_', ' ') : 'N/A'}
                         </span>
                       </td>
                       <td className="p-3 font-bold text-slate-700">
@@ -193,32 +262,84 @@ export default function EmployeesPage() {
                       </td>
                       <td className="p-3 font-mono font-bold tracking-widest text-slate-700">{emp.pin || '••••'}</td>
                       <td className="p-3">
-                        <Badge variant="success">Active</Badge>
+                        {isSuspended ? (
+                          <Badge variant="danger">Suspended</Badge>
+                        ) : (
+                          <Badge variant="success">Active</Badge>
+                        )}
                       </td>
                       <td className="p-3 text-right space-x-1">
+                        {/* Edit Employee */}
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => {
                             setEditEmployee(emp);
+                            setEditName(emp.name);
+                            setEditEmail(emp.email || '');
+                            setEditPhone(emp.phone || '');
                             setRole(emp.role);
                             setPin(emp.pin || '');
                             setBranchId(emp.branch_id || '');
                           }}
                           className="text-[11px] font-bold py-1"
+                          title="Edit Employee"
                         >
                           <Edit3 className="w-3.5 h-3.5 mr-1" />
-                          Edit Role & Branch
+                          Edit
                         </Button>
+
+                        {/* Suspend / Activate Employee */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleStatusMutation.mutate(emp)}
+                          className={`text-[11px] font-bold py-1 ${
+                            isSuspended
+                              ? 'text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                              : 'text-amber-700 border-amber-300 hover:bg-amber-50'
+                          }`}
+                          title={isSuspended ? 'Activate Employee Account' : 'Suspend Employee Account'}
+                        >
+                          {isSuspended ? (
+                            <>
+                              <UserCheck className="w-3.5 h-3.5 mr-1" />
+                              Activate
+                            </>
+                          ) : (
+                            <>
+                              <UserX className="w-3.5 h-3.5 mr-1" />
+                              Suspend
+                            </>
+                          )}
+                        </Button>
+
+                        {/* Reset Password */}
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            if (confirm(`Remove staff account "${emp.name}"?`)) {
+                            setResetEmployee(emp);
+                            setResetPassword('');
+                          }}
+                          className="text-[11px] font-bold py-1 text-purple-700 border-purple-300 hover:bg-purple-50"
+                          title="Reset Password"
+                        >
+                          <Lock className="w-3.5 h-3.5 mr-1" />
+                          Reset Pwd
+                        </Button>
+
+                        {/* Delete Employee */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to delete employee "${emp.name}"?`)) {
                               deleteMutation.mutate(emp.id);
                             }
                           }}
-                          className="text-[11px] font-bold py-1 text-red-600 hover:bg-red-50"
+                          className="text-[11px] font-bold py-1 text-red-600 border-red-200 hover:bg-red-50"
+                          title="Delete Employee"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -271,26 +392,32 @@ export default function EmployeesPage() {
         </Card>
       )}
 
-      {/* Add Staff Modal */}
-      <Dialog isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="Add New Staff Member">
+      {/* 1. Create Employee Modal */}
+      <Dialog isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="Create New Employee Account">
         <form onSubmit={handleCreateStaff} className="space-y-3">
           <Input label="Full Name" value={addName} onChange={(e) => setAddName(e.target.value)} required />
           <Input label="Email Address" type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} required />
           <Input label="Initial Password" type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+          
+          {/* Dynamic Role Selection from Database */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Role</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Assign Role (Fetched Dynamically from Database)
+            </label>
             <select
               value={addRole}
               onChange={(e) => setAddRole(e.target.value as UserRole)}
-              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
             >
-              <option value="cashier">Cashier</option>
-              <option value="store_keeper">Store Keeper</option>
-              <option value="accountant">Accountant</option>
-              <option value="manager">Manager</option>
-              <option value="owner">Organization Owner</option>
+              {dbRoles.map((r) => (
+                <option key={r.role_name} value={r.role_name}>
+                  {r.role_label}
+                </option>
+              ))}
             </select>
           </div>
+
+          {/* Branch Assignment */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Assign Store Branch</label>
             <select
@@ -306,31 +433,48 @@ export default function EmployeesPage() {
               ))}
             </select>
           </div>
+
+          <Input
+            label="POS Shift Lock PIN (4-6 Digits, Optional)"
+            type="password"
+            value={addPin}
+            onChange={(e) => setAddPin(e.target.value)}
+            maxLength={6}
+            placeholder="e.g. 1234"
+          />
+
           <Button type="submit" className="w-full mt-4 bg-blue-600 hover:bg-blue-700 font-bold" disabled={createStaffMutation.isPending}>
-            {createStaffMutation.isPending ? 'Registering...' : 'Save Staff Account'}
+            {createStaffMutation.isPending ? 'Creating Employee...' : 'Create Employee Account'}
           </Button>
         </form>
       </Dialog>
 
-      {/* Edit Role & PIN Modal */}
-      <Dialog isOpen={!!editEmployee} onClose={() => setEditEmployee(null)} title={`Edit Staff: ${editEmployee?.name}`}>
-        <form onSubmit={handleSaveEmployee} className="space-y-4">
+      {/* 2. Edit Employee Modal */}
+      <Dialog isOpen={!!editEmployee} onClose={() => setEditEmployee(null)} title={`Edit Employee: ${editEmployee?.name}`}>
+        <form onSubmit={handleSaveEmployee} className="space-y-3">
+          <Input label="Full Name" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+          <Input label="Email Address" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} required />
+          <Input label="Phone Number" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+254 7..." />
+
+          {/* Dynamic Role Selection from Database */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Assign User Role</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Assign User Role (Fetched Dynamically from Database)
+            </label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
-              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white"
+              className="w-full px-3 py-2 border rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-blue-500"
             >
-              <option value="cashier">Cashier</option>
-              <option value="store_keeper">Store Keeper</option>
-              <option value="accountant">Accountant</option>
-              <option value="manager">Manager</option>
-              <option value="admin">Administrator</option>
-              <option value="super_admin">Super Admin</option>
+              {dbRoles.map((r) => (
+                <option key={r.role_name} value={r.role_name}>
+                  {r.role_label}
+                </option>
+              ))}
             </select>
           </div>
 
+          {/* Branch Assignment */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Assign Store Branch</label>
             <select
@@ -357,7 +501,33 @@ export default function EmployeesPage() {
           />
 
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 font-bold" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? 'Saving...' : 'Save Role, Branch & PIN'}
+            {updateMutation.isPending ? 'Saving...' : 'Save Employee Details'}
+          </Button>
+        </form>
+      </Dialog>
+
+      {/* 3. Reset Password Modal */}
+      <Dialog isOpen={!!resetEmployee} onClose={() => setResetEmployee(null)} title={`Reset Password: ${resetEmployee?.name}`}>
+        <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Set a new password for employee <span className="font-extrabold text-slate-900">{resetEmployee?.name}</span> ({resetEmployee?.email}).
+          </p>
+          <Input
+            label="New Password"
+            type="password"
+            value={resetPassword}
+            onChange={(e) => setResetPassword(e.target.value)}
+            placeholder="Minimum 6 characters"
+            required
+            minLength={6}
+          />
+
+          <Button
+            type="submit"
+            className="w-full bg-purple-600 hover:bg-purple-700 font-bold"
+            disabled={resetPasswordMutation.isPending}
+          >
+            {resetPasswordMutation.isPending ? 'Resetting Password...' : 'Confirm Reset Password'}
           </Button>
         </form>
       </Dialog>

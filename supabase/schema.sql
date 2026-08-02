@@ -51,7 +51,7 @@ BEGIN
   INSERT INTO public.users (
     id, supermarket_id, branch_id, name, email, role, is_active, created_at, updated_at
   ) VALUES (
-    p_admin_id, p_supermarket_id, NULL, p_admin_name, p_admin_email, 'super_admin', TRUE, NOW(), NOW()
+    p_admin_id, p_supermarket_id, NULL, p_admin_name, p_admin_email, 'supermarket_owner', TRUE, NOW(), NOW()
   );
 
   RETURN jsonb_build_object(
@@ -422,7 +422,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "version" integer DEFAULT 1 NOT NULL,
     "supermarket_id" "uuid",
     "is_active" boolean DEFAULT true NOT NULL,
-    CONSTRAINT "users_role_check" CHECK ((("role")::"text" = ANY ((ARRAY['platform_owner'::character varying, 'super_admin'::character varying, 'admin'::character varying, 'owner'::character varying, 'manager'::character varying, 'cashier'::character varying, 'store_keeper'::character varying, 'accountant'::character varying])::"text"[])))
+    CONSTRAINT "users_role_check" CHECK ((("role")::"text" = ANY ((ARRAY['platform_owner'::character varying, 'supermarket_owner'::character varying, 'branch_manager'::character varying, 'manager'::character varying, 'supervisor'::character varying, 'inventory_manager'::character varying, 'sales_manager'::character varying, 'accountant'::character varying, 'procurement_officer'::character varying, 'store_keeper'::character varying, 'customer_service'::character varying, 'cashier'::character varying])::"text"[])))
 );
 ALTER TABLE "public"."users" OWNER TO "postgres";
 

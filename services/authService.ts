@@ -1,14 +1,31 @@
 import { createClient } from '@/lib/supabase/client';
 import { UserProfile, UserRole } from '@/types';
 
+export type PermissionKey =
+  | 'products.view'
+  | 'products.create'
+  | 'products.edit'
+  | 'products.delete'
+  | 'sales.create'
+  | 'sales.refund'
+  | 'inventory.manage'
+  | 'customers.manage'
+  | 'reports.view'
+  | 'expenses.manage'
+  | 'suppliers.manage'
+  | 'employees.manage'
+  | 'branches.manage'
+  | 'settings.manage'
+  | 'platform.manage';
+
+export type UserRoleCategory = 'Platform Owner' | 'Supermarket Owner' | 'Employee';
+
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   platform_owner: 100,
-  platform_admin: 95,
-  super_admin: 90,
-  owner: 85,
-  admin: 80,
+  supermarket_owner: 85,
   branch_manager: 65,
   manager: 60,
+  supervisor: 58,
   inventory_manager: 55,
   sales_manager: 50,
   accountant: 45,
@@ -16,6 +33,59 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
   store_keeper: 35,
   customer_service: 30,
   cashier: 20,
+};
+
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
+  platform_owner: [
+    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
+    'branches.manage', 'settings.manage', 'platform.manage',
+  ],
+  supermarket_owner: [
+    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
+    'branches.manage', 'settings.manage',
+  ],
+  branch_manager: [
+    'products.view', 'products.create', 'products.edit',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'employees.manage',
+  ],
+  manager: [
+    'products.view', 'products.create', 'products.edit',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage', 'expenses.manage', 'suppliers.manage', 'employees.manage',
+    'branches.manage',
+  ],
+  supervisor: [
+    'products.view', 'products.create', 'products.edit',
+    'sales.create', 'sales.refund', 'inventory.manage', 'reports.view',
+    'customers.manage',
+  ],
+  inventory_manager: [
+    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'inventory.manage', 'suppliers.manage',
+  ],
+  store_keeper: [
+    'products.view', 'inventory.manage', 'suppliers.manage',
+  ],
+  accountant: [
+    'reports.view', 'expenses.manage', 'sales.refund',
+  ],
+  sales_manager: [
+    'sales.create', 'sales.refund', 'reports.view', 'customers.manage',
+  ],
+  procurement_officer: [
+    'products.view', 'suppliers.manage', 'inventory.manage',
+  ],
+  customer_service: [
+    'customers.manage', 'sales.refund',
+  ],
+  cashier: [
+    'sales.create', 'products.view', 'customers.manage',
+  ],
 };
 
 export const authService = {
@@ -113,9 +183,32 @@ export const authService = {
     return data;
   },
 
+  getRoleCategory(role: UserRole): UserRoleCategory {
+    if (role === 'platform_owner') return 'Platform Owner';
+    if (role === 'supermarket_owner') return 'Supermarket Owner';
+    return 'Employee';
+  },
+
+  isGlobalRole(role: UserRole): boolean {
+    return role === 'platform_owner';
+  },
+
+  isSupermarketOwner(role: UserRole): boolean {
+    return role === 'supermarket_owner';
+  },
+
+  isEmployeeRole(role: UserRole): boolean {
+    return role !== 'platform_owner' && role !== 'supermarket_owner';
+  },
+
   hasRolePermission(userRole: UserRole, requiredRole: UserRole): boolean {
     const userLevel = ROLE_HIERARCHY[userRole] || 0;
     const requiredLevel = ROLE_HIERARCHY[requiredRole] || 0;
     return userLevel >= requiredLevel;
+  },
+
+  hasPermission(userRole: UserRole, permission: PermissionKey): boolean {
+    const allowed = ROLE_PERMISSIONS[userRole] || [];
+    return allowed.includes(permission);
   },
 };
