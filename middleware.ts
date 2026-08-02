@@ -62,16 +62,25 @@ export async function middleware(request: NextRequest) {
     user = null;
   }
 
-  // 2. Redirect unauthenticated users to /login for root or any protected route
+  // Helper to copy cookies to redirect response
+  const redirectWithCookies = (url: URL) => {
+    const redirectResponse = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return redirectResponse;
+  };
+
+  // 2. Redirect unauthenticated users to /login for any protected route
   if (!user) {
-    if (!isPublicRoute || pathname === '/') {
-      return NextResponse.redirect(new URL('/login', request.url));
+    if (!isPublicRoute) {
+      return redirectWithCookies(new URL('/login', request.url));
     }
     return response;
   }
 
-  // 3. For authenticated users accessing / or /login, redirect automatically based on profile role
-  if (pathname === '/' || pathname === '/login') {
+  // 3. For authenticated users accessing /login, redirect automatically based on profile role
+  if (pathname === '/login') {
     try {
       const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         cookies: {
@@ -88,11 +97,11 @@ export async function middleware(request: NextRequest) {
         .single();
 
       if (profile?.role === 'platform_owner') {
-        return NextResponse.redirect(new URL('/admin/platform', request.url));
+        return redirectWithCookies(new URL('/admin/platform', request.url));
       }
     } catch {}
 
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return redirectWithCookies(new URL('/dashboard', request.url));
   }
 
   return response;
