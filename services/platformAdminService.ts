@@ -254,6 +254,19 @@ export const platformAdminService = {
     if (error) throw error;
   },
 
+  async updateSupermarketTenant(id: string, updates: Partial<Supermarket>): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('supermarkets')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
   async approveSupermarket(supermarketId: string): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase

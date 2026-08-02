@@ -6,7 +6,7 @@ import { platformAdminService, CreateSupermarketPayload } from '@/services/platf
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Store, UserCheck, MapPin, Globe, CreditCard, Building } from 'lucide-react';
+import { Store, UserCheck, MapPin, Globe, CreditCard, Building, AlertCircle, Loader2 } from 'lucide-react';
 
 interface CreateSupermarketModalProps {
   isOpen: boolean;
@@ -30,46 +30,86 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
   const [logoUrl, setLogoUrl] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('Main Branch');
 
+  const [validationError, setValidationError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
   const createMutation = useMutation({
     mutationFn: (payload: CreateSupermarketPayload) =>
       platformAdminService.createSupermarketTenant(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platformSupermarketsList'] });
       queryClient.invalidateQueries({ queryKey: ['platformMetrics'] });
-      onClose();
-      // Reset form
-      setName('');
-      setRegNumber('');
-      setOwnerName('');
-      setOwnerEmail('');
-      setOwnerPhone('');
-      setAddress('');
-      setLogoUrl('');
+      setSuccessMessage('✓ Supermarket created successfully!');
+      setTimeout(() => {
+        setSuccessMessage('');
+        onClose();
+        // Reset form
+        setName('');
+        setRegNumber('');
+        setOwnerName('');
+        setOwnerEmail('');
+        setOwnerPhone('');
+        setAddress('');
+        setLogoUrl('');
+        setValidationError('');
+      }, 1500);
+    },
+    onError: (err: any) => {
+      setValidationError(err.message || 'Failed to create supermarket. Please verify credentials.');
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError('');
+
+    if (!name.trim()) {
+      setValidationError('Supermarket Business Name is required.');
+      return;
+    }
+    if (!ownerName.trim()) {
+      setValidationError('Supermarket Owner Full Name is required.');
+      return;
+    }
+    if (!ownerEmail.trim() || !ownerEmail.includes('@')) {
+      setValidationError('A valid Owner Email Address is required.');
+      return;
+    }
+
     createMutation.mutate({
-      name,
-      registration_number: regNumber,
-      owner_name: ownerName,
-      owner_email: ownerEmail,
-      owner_phone: ownerPhone,
+      name: name.trim(),
+      registration_number: regNumber.trim(),
+      owner_name: ownerName.trim(),
+      owner_email: ownerEmail.trim(),
+      owner_phone: ownerPhone.trim(),
       country,
       currency,
       timezone,
-      business_address: address,
+      business_address: address.trim(),
       subscription_plan: plan,
       trial_period_days: parseInt(trialDays) || 14,
-      logo_url: logoUrl,
-      default_branch_name: defaultBranch,
+      logo_url: logoUrl.trim(),
+      default_branch_name: defaultBranch.trim() || 'Main Branch',
     });
   };
 
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} title="Register New Supermarket Tenant Organization">
+    <Dialog isOpen={isOpen} onClose={onClose} title="Register New Supermarket Tenant">
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {validationError && (
+          <div className="p-3 bg-red-950/80 border border-red-800 text-red-300 font-bold rounded-xl flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-400" />
+            <span>{validationError}</span>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="p-3 bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold rounded-xl flex items-center space-x-2">
+            <Store className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
         {/* Section 1: Supermarket Organization */}
         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
           <p className="font-extrabold text-white flex items-center space-x-2">
@@ -79,7 +119,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input
-              label="Supermarket Business Name"
+              label="Supermarket Business Name *"
               placeholder="e.g. Westlands Fresh Mart"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -97,7 +137,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input
-              label="Default Branch Name"
+              label="Default Branch Name *"
               placeholder="e.g. Main Branch"
               value={defaultBranch}
               onChange={(e) => setDefaultBranch(e.target.value)}
@@ -130,7 +170,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
           </p>
 
           <Input
-            label="Owner Full Name"
+            label="Owner Full Name *"
             placeholder="e.g. Patrick Kamau"
             value={ownerName}
             onChange={(e) => setOwnerName(e.target.value)}
@@ -140,7 +180,7 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input
-              label="Owner Email Address"
+              label="Owner Email Address *"
               type="email"
               placeholder="owner@supermarket.com"
               value={ownerEmail}
@@ -154,7 +194,6 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
               value={ownerPhone}
               onChange={(e) => setOwnerPhone(e.target.value)}
               className="bg-slate-900 border-slate-800 text-white"
-              required
             />
           </div>
         </div>
@@ -212,13 +251,32 @@ export function CreateSupermarketModal({ isOpen, onClose }: CreateSupermarketMod
           </div>
         </div>
 
-        <Button
-          type="submit"
-          disabled={createMutation.isPending}
-          className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 font-bold py-3 text-xs"
-        >
-          {createMutation.isPending ? 'Registering Supermarket Tenant...' : 'Create Supermarket Tenant & Invite Owner'}
-        </Button>
+        {/* Buttons Footer */}
+        <div className="flex space-x-3 pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="flex-1 bg-slate-900 border-slate-800 text-slate-300 hover:text-white font-bold"
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="submit"
+            disabled={createMutation.isPending}
+            className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 font-bold py-2.5 text-xs flex items-center justify-center space-x-2"
+          >
+            {createMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                <span>Creating Supermarket...</span>
+              </>
+            ) : (
+              <span>Create Supermarket</span>
+            )}
+          </Button>
+        </div>
       </form>
     </Dialog>
   );
