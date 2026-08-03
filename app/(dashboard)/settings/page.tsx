@@ -1,281 +1,124 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingService } from '@/services/settingService';
 import { employeeService } from '@/services/employeeService';
 import { authService } from '@/services/authService';
 import { storageService } from '@/services/storageService';
+import { brandingService, BrandingSettings } from '@/services/brandingService';
+import { mpesaService, MpesaConfig } from '@/services/mpesaService';
+import { whatsappService, WhatsAppConfig } from '@/services/whatsappService';
 import { useAuth } from '@/context/AuthContext';
+import { useBranding } from '@/context/BrandingContext';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/toast';
 import {
-  Save, AlertCircle, Sparkles, UserCheck, Store, Lock, Timer,
-  Upload, X, Camera, Loader2, CheckCircle2,
+  Save, AlertCircle, Sparkles, UserCheck, Store, Lock, Timer, Palette,
+  Upload, X, Camera, Loader2, CheckCircle2, Eye, Receipt, Globe, Clock, ShieldAlert, Image as ImageIcon,
+  Smartphone, Key, ShieldCheck, RefreshCw, Layers, Check, MessageSquare,
 } from 'lucide-react';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/svg+xml', 'image/webp'];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// ─── Avatar Uploader Component ───────────────────────────────────────────────
-
-interface AvatarUploaderProps {
-  currentUrl: string;
-  userName: string;
-  userId: string;
+interface ImageUploaderProps {
+  label: string;
+  currentUrl?: string;
   onUploaded: (url: string) => void;
+  assetType: 'logo' | 'favicon' | 'login_bg' | 'receipt_logo';
 }
 
-function AvatarUploader({ currentUrl, userName, userId, onUploaded }: AvatarUploaderProps) {
+function BrandingAssetUploader({ label, currentUrl = '', onUploaded, assetType }: ImageUploaderProps) {
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<string>(currentUrl);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  // Keep preview in sync when the profile refreshes
   useEffect(() => {
     setPreview(currentUrl);
   }, [currentUrl]);
 
-  const initials = userName
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w.charAt(0).toUpperCase())
-    .join('');
+  const handleFile = async (file: File) => {
+    if (file.size > MAX_SIZE_BYTES) return;
+    const localUrl = URL.createObjectURL(file);
+    setPreview(localUrl);
+    setUploading(true);
 
-  const validateFile = (file: File): string | null => {
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      return 'Only JPG, PNG, and WEBP images are allowed.';
+    try {
+      const url = await brandingService.uploadBrandingAsset(file, user?.supermarket_id || 'default', assetType);
+      setPreview(url);
+      onUploaded(url);
+    } catch {
+      setPreview(currentUrl);
+    } finally {
+      setUploading(false);
     }
-    if (file.size > MAX_SIZE_BYTES) {
-      return `File too large. Maximum size is 5 MB (selected: ${(file.size / 1024 / 1024).toFixed(1)} MB).`;
-    }
-    return null;
-  };
-
-  const handleFile = useCallback(
-    async (file: File) => {
-      setUploadError(null);
-      setUploadSuccess(false);
-
-      const validationError = validateFile(file);
-      if (validationError) {
-        setUploadError(validationError);
-        return;
-      }
-
-      // Immediate local preview
-      const localUrl = URL.createObjectURL(file);
-      setPreview(localUrl);
-
-      setUploading(true);
-      setProgress(10);
-
-      try {
-        // Simulate progress steps
-        const progressTimer = setInterval(() => {
-          setProgress((p) => Math.min(p + 15, 85));
-        }, 200);
-
-        const uploadedUrl = await storageService.uploadProfilePhoto(file, userId);
-
-        clearInterval(progressTimer);
-        setProgress(100);
-
-        onUploaded(uploadedUrl);
-        setPreview(uploadedUrl);
-        setUploadSuccess(true);
-        setTimeout(() => setUploadSuccess(false), 3000);
-      } catch (err: any) {
-        setUploadError(err.message || 'Upload failed. Please try again.');
-        setPreview(currentUrl); // revert on error
-      } finally {
-        setUploading(false);
-        setTimeout(() => setProgress(0), 800);
-      }
-    },
-    [userId, currentUrl, onUploaded]
-  );
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-    // Reset input so same file can be picked again
-    e.target.value = '';
-  };
-
-  const handleRemove = () => {
-    setPreview('');
-    onUploaded('');
-    setUploadError(null);
   };
 
   return (
-    <div className="space-y-3">
-      <label className="block text-xs font-extrabold text-slate-700">Profile Photo</label>
-
-      <div className="flex items-start space-x-5">
-        {/* Avatar Preview Circle */}
-        <div className="relative flex-shrink-0">
-          <div
-            className={`w-24 h-24 rounded-full overflow-hidden border-2 transition-all ${
-              dragging ? 'border-blue-500 scale-105' : 'border-slate-200'
-            } bg-slate-100 flex items-center justify-center`}
-            onDragEnter={() => setDragging(true)}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            {preview ? (
-              <img
-                src={preview}
-                alt={userName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-2xl font-black text-slate-400">{initials}</span>
-            )}
-
-            {/* Overlay while uploading */}
-            {uploading && (
-              <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center">
-                <Loader2 className="w-5 h-5 text-white animate-spin" />
-                <span className="text-white text-[10px] font-bold mt-1">{progress}%</span>
-              </div>
-            )}
-
-            {/* Success flash */}
-            {uploadSuccess && !uploading && (
-              <div className="absolute inset-0 bg-emerald-600/80 rounded-full flex items-center justify-center animate-in fade-in">
-                <CheckCircle2 className="w-8 h-8 text-white" />
-              </div>
-            )}
-          </div>
-
-          {/* Camera icon shortcut */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md border-2 border-white transition-colors disabled:opacity-50"
-            title="Change photo"
-          >
-            <Camera className="w-3.5 h-3.5" />
-          </button>
+    <div className="space-y-2 font-sans">
+      <label className="block text-xs font-bold text-slate-700">{label}</label>
+      <div className="flex items-center space-x-3">
+        <div className="w-16 h-16 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden relative shadow-xs">
+          {preview ? (
+            <img src={preview} alt={label} className="w-full h-full object-cover" />
+          ) : (
+            <ImageIcon className="w-6 h-6 text-slate-300" />
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <Loader2 className="w-4 h-4 text-white animate-spin" />
+            </div>
+          )}
         </div>
 
-        {/* Controls + Info */}
-        <div className="flex-1 space-y-2 pt-1">
-          {/* Drag-and-drop zone */}
-          <div
-            className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-              dragging
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'
-            }`}
-            onClick={() => fileInputRef.current?.click()}
-            onDragEnter={() => setDragging(true)}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1" />
-            <p className="text-xs font-bold text-slate-600">
-              {dragging ? 'Drop to upload' : 'Click or drag-and-drop'}
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">JPG, PNG, WEBP — max 5 MB</p>
-          </div>
-
-          {/* Progress bar */}
-          {uploading && progress > 0 && (
-            <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex items-center space-x-2">
+        <div className="space-y-1">
+          <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} isLoading={uploading}>
+            <Upload className="w-3.5 h-3.5 mr-1" /> Change Image
+          </Button>
+          {preview && (
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex items-center space-x-1.5 text-xs font-extrabold px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              onClick={() => {
+                setPreview('');
+                onUploaded('');
+              }}
+              className="block text-[11px] font-bold text-red-600 hover:underline"
             >
-              <Upload className="w-3 h-3" />
-              <span>{uploading ? 'Uploading...' : 'Upload Photo'}</span>
+              Remove
             </button>
-
-            {preview && !uploading && (
-              <button
-                type="button"
-                onClick={handleRemove}
-                className="flex items-center space-x-1.5 text-xs font-extrabold px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-colors"
-              >
-                <X className="w-3 h-3" />
-                <span>Remove</span>
-              </button>
-            )}
-          </div>
-
-          {/* Error message */}
-          {uploadError && (
-            <div className="flex items-start space-x-1.5 text-xs text-red-600 font-bold bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>{uploadError}</span>
-            </div>
-          )}
-
-          {/* Success message */}
-          {uploadSuccess && (
-            <div className="flex items-center space-x-1.5 text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Photo uploaded successfully!</span>
-            </div>
           )}
         </div>
       </div>
-
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept="image/jpeg,image/jpg,image/png,image/svg+xml,image/webp"
         className="hidden"
-        onChange={handleInputChange}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+        }}
       />
     </div>
   );
 }
 
-// ─── Main Settings Page ───────────────────────────────────────────────────────
-
 export default function SettingsPage() {
-  const queryClient = useQueryClient();
-  const { user, refreshProfile, autoLockTimeoutMinutes, updateAutoLockTimeout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'store' | 'terminal'>('profile');
+  const toast = useToast();
+  const { user, autoLockTimeoutMinutes, updateAutoLockTimeout } = useAuth();
+  const { branding, saveBranding, previewBranding, isPlatformOwner, isOwner } = useBranding();
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'store' | 'branding' | 'mpesa' | 'whatsapp' | 'terminal'>('profile');
 
   // Personal Profile State
   const [fullName, setFullName] = useState('');
   const [userPhone, setUserPhone] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
   // Store Settings State
   const [storeName, setStoreName] = useState('');
@@ -283,344 +126,539 @@ export default function SettingsPage() {
   const [address, setAddress] = useState('');
   const [currency, setCurrency] = useState('KES');
 
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // White Label Branding Form State
+  const [bName, setBName] = useState(branding.business_name || '');
+  const [sName, setSName] = useState(branding.short_name || '');
+  const [tagline, setTagline] = useState(branding.tagline || '');
+  const [logoUrl, setLogoUrl] = useState(branding.logo_url || '');
+  const [faviconUrl, setFaviconUrl] = useState(branding.favicon_url || '');
+  const [primaryColor, setPrimaryColor] = useState(branding.primary_color || '#2563EB');
+  const [secondaryColor, setSecondaryColor] = useState(branding.secondary_color || '#64748B');
+  const [accentColor, setAccentColor] = useState(branding.accent_color || '#10B981');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(branding.theme_mode || 'light');
+  const [loginBgUrl, setLoginBgUrl] = useState(branding.login_bg_url || '');
+  const [receiptLogoUrl, setReceiptLogoUrl] = useState(branding.receipt_logo_url || '');
+  const [receiptFooter, setReceiptFooter] = useState(branding.receipt_footer || '');
+  const [invoiceHeader, setInvoiceHeader] = useState(branding.invoice_header || '');
+  const [invoiceFooter, setInvoiceFooter] = useState(branding.invoice_footer || '');
+  const [bEmail, setBEmail] = useState(branding.email || '');
+  const [bPhone, setBPhone] = useState(branding.phone || '');
+  const [bWebsite, setBWebsite] = useState(branding.website || '');
+  const [bAddress, setBAddress] = useState(branding.address || '');
+  const [bCurrency, setBCurrency] = useState(branding.currency || 'KES');
+  const [bTimezone, setBTimezone] = useState(branding.timezone || 'Africa/Nairobi');
+
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  // M-Pesa Integration Form State
+  const [mpesaEnv, setMpesaEnv] = useState<'sandbox' | 'production'>('sandbox');
+  const [consumerKey, setConsumerKey] = useState('');
+  const [consumerSecret, setConsumerSecret] = useState('');
+  const [shortcode, setShortcode] = useState('174379');
+  const [tillNumber, setTillNumber] = useState('889900');
+  const [paybillNumber, setPaybillNumber] = useState('600100');
+  const [passkey, setPasskey] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState('https://api.antigravityretail.com/mpesa/callback');
+  const [accountRef, setAccountRef] = useState('STORE_POS');
+  const [enableStk, setEnableStk] = useState(true);
+  const [enablePaybill, setEnablePaybill] = useState(true);
+  const [enableTill, setEnableTill] = useState(true);
+  const [enableRefunds, setEnableRefunds] = useState(true);
+  const [enableReconciliation, setEnableReconciliation] = useState(true);
+
+  const [testingMpesa, setTestingMpesa] = useState(false);
+  const [savingMpesa, setSavingMpesa] = useState(false);
+
+  // WhatsApp Integration Form State
+  const [waEnabled, setWaEnabled] = useState(true);
+  const [phoneNumId, setPhoneNumId] = useState('109283746501928');
+  const [bizAccountId, setBizAccountId] = useState('881920394819203');
+  const [accessToken, setAccessToken] = useState('');
+  const [verifyToken, setVerifyToken] = useState('antigravity_wa_verify_sec_99');
+  const [countryCode, setCountryCode] = useState('+254');
+  const [displayName, setDisplayName] = useState('Nairobi Supermarket Official');
+  const [bizPhone, setBizPhone] = useState('254700000000');
+
+  const [testingWa, setTestingWa] = useState(false);
+  const [savingWa, setSavingWa] = useState(false);
 
   useEffect(() => {
     if (user) {
       setFullName(user.name || '');
       setUserPhone(user.phone || '');
-      // photo_url is not stored in the DB — load from localStorage
-      const stored = typeof window !== 'undefined'
-        ? localStorage.getItem(`profile_photo_${user.id}`) || ''
-        : '';
-      setPhotoUrl(stored);
     }
   }, [user]);
 
-  const { data: supermarket, isLoading } = useQuery({
-    queryKey: ['settings', user?.supermarket_id],
-    queryFn: () => settingService.getSettings(user?.supermarket_id),
-  });
-
   useEffect(() => {
-    if (supermarket) {
-      setStoreName(supermarket.name || '');
-      setStorePhone(supermarket.phone || '');
-      setAddress(supermarket.address || '');
-      setCurrency(supermarket.currency || 'KES');
-    }
-  }, [supermarket]);
+    setBName(branding.business_name || '');
+    setSName(branding.short_name || '');
+    setTagline(branding.tagline || '');
+    setLogoUrl(branding.logo_url || '');
+    setFaviconUrl(branding.favicon_url || '');
+    setPrimaryColor(branding.primary_color || '#2563EB');
+    setSecondaryColor(branding.secondary_color || '#64748B');
+    setAccentColor(branding.accent_color || '#10B981');
+    setThemeMode(branding.theme_mode || 'light');
+    setLoginBgUrl(branding.login_bg_url || '');
+    setReceiptLogoUrl(branding.receipt_logo_url || '');
+    setReceiptFooter(branding.receipt_footer || '');
+    setInvoiceHeader(branding.invoice_header || '');
+    setInvoiceFooter(branding.invoice_footer || '');
+    setBEmail(branding.email || '');
+    setBPhone(branding.phone || '');
+    setBWebsite(branding.website || '');
+    setBAddress(branding.address || '');
+    setBCurrency(branding.currency || 'KES');
+    setBTimezone(branding.timezone || 'Africa/Nairobi');
+  }, [branding]);
 
-  // ─── Mutations ─────────────────────────────────────────────────────────────
-
-  const updateProfileMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) return;
-
-      // photo_url does NOT exist in the users DB table — it is stored in localStorage.
-      // Only pass DB-safe fields to updateEmployee.
-      await employeeService.updateEmployee(user.id, {
-        name: fullName,
-        phone: userPhone,
+  // Load M-Pesa & WhatsApp configurations
+  useEffect(() => {
+    if (user?.supermarket_id) {
+      mpesaService.getConfig(user.supermarket_id).then((cfg) => {
+        setMpesaEnv(cfg.environment);
+        setConsumerKey(cfg.consumer_key);
+        setConsumerSecret(cfg.consumer_secret);
+        setShortcode(cfg.business_shortcode);
+        setTillNumber(cfg.till_number || '');
+        setPaybillNumber(cfg.paybill_number || '');
+        setPasskey(cfg.passkey);
+        setCallbackUrl(cfg.callback_url);
+        setAccountRef(cfg.account_reference);
+        setEnableStk(cfg.enable_stk_push);
+        setEnablePaybill(cfg.enable_paybill);
+        setEnableTill(cfg.enable_till);
+        setEnableRefunds(cfg.enable_refunds);
+        setEnableReconciliation(cfg.enable_reconciliation);
       });
 
-      // Persist photo URL to localStorage so it survives refresh
-      if (typeof window !== 'undefined') {
-        if (photoUrl) {
-          localStorage.setItem(`profile_photo_${user.id}`, photoUrl);
-        } else {
-          localStorage.removeItem(`profile_photo_${user.id}`);
-        }
+      whatsappService.getConfig(user.supermarket_id).then((wacfg) => {
+        setWaEnabled(wacfg.is_enabled);
+        setPhoneNumId(wacfg.phone_number_id);
+        setBizAccountId(wacfg.business_account_id);
+        setAccessToken(wacfg.permanent_access_token);
+        setVerifyToken(wacfg.webhook_verify_token);
+        setCountryCode(wacfg.default_country_code);
+        setDisplayName(wacfg.display_name);
+        setBizPhone(wacfg.business_phone);
+      });
+    }
+  }, [user]);
+
+  const handleTestWa = async () => {
+    setTestingWa(true);
+    try {
+      const res = await whatsappService.testConnection({
+        phone_number_id: phoneNumId,
+        permanent_access_token: accessToken,
+        display_name: displayName,
+      });
+      if (res.success) {
+        toast.success('WhatsApp API Connected', res.message);
+      } else {
+        toast.error('Connection Failed', res.message);
       }
-
-      if (newPassword) {
-        if (newPassword !== confirmPassword) {
-          throw new Error('Passwords do not match.');
-        }
-        if (newPassword.length < 6) {
-          throw new Error('Password must be at least 6 characters.');
-        }
-        await authService.resetPassword(newPassword);
-      }
-    },
-    onSuccess: async () => {
-      await refreshProfile();
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      setErrorMessage(null);
-      setNewPassword('');
-      setConfirmPassword('');
-      setSuccessMessage('Personal profile updated successfully!');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    },
-    onError: (err: any) => {
-      setErrorMessage(err.message || 'Failed to update personal profile.');
-    },
-  });
-
-  const updateSettingsMutation = useMutation({
-    mutationFn: (updates: any) => settingService.updateSettings(user?.supermarket_id || '', updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      setErrorMessage(null);
-      setSuccessMessage('Business store settings saved successfully!');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    },
-    onError: (err: any) => {
-      setErrorMessage(err.message || 'Failed to save store settings.');
-    },
-  });
-
-  const handleSaveProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateProfileMutation.mutate();
+    } catch (err: any) {
+      toast.error('WhatsApp Test Error', err.message || 'WhatsApp Cloud API test failed.');
+    } fontFinally: {
+      setTestingWa(false);
+    }
   };
 
-  const handleSaveStore = (e: React.FormEvent) => {
+  const handleSaveWaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettingsMutation.mutate({ name: storeName, phone: storePhone, address, currency });
+    setSavingWa(true);
+    try {
+      await whatsappService.saveConfig(user?.supermarket_id || '00000000-0000-0000-0000-000000000001', {
+        is_enabled: waEnabled,
+        phone_number_id: phoneNumId,
+        business_account_id: bizAccountId,
+        permanent_access_token: accessToken,
+        webhook_verify_token: verifyToken,
+        default_country_code: countryCode,
+        display_name: displayName,
+        business_phone: bizPhone,
+      });
+      toast.success('WhatsApp Credentials Saved', 'Meta Cloud API settings updated for this supermarket.');
+    } catch (err: any) {
+      toast.error('Save Failed', err.message || 'Could not save WhatsApp configuration.');
+    } finally {
+      setSavingWa(false);
+    }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const handleTestMpesa = async () => {
+    setTestingMpesa(true);
+    try {
+      const res = await mpesaService.testConnection({
+        environment: mpesaEnv,
+        consumer_key: consumerKey,
+        consumer_secret: consumerSecret,
+        business_shortcode: shortcode,
+      });
+      if (res.success) {
+        toast.success('M-Pesa API Connection Successful', res.message);
+      } else {
+        toast.error('Connection Failed', res.message);
+      }
+    } catch (err: any) {
+      toast.error('Test Connection Error', err.message || 'M-Pesa API test failed.');
+    } finally {
+      setTestingMpesa(false);
+    }
+  };
+
+  const handleSaveMpesaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingMpesa(true);
+    try {
+      await mpesaService.saveConfig(user?.supermarket_id || '00000000-0000-0000-0000-000000000001', {
+        environment: mpesaEnv,
+        consumer_key: consumerKey,
+        consumer_secret: consumerSecret,
+        business_shortcode: shortcode,
+        till_number: tillNumber,
+        paybill_number: paybillNumber,
+        passkey,
+        callback_url: callbackUrl,
+        account_reference: accountRef,
+        enable_stk_push: enableStk,
+        enable_paybill: enablePaybill,
+        enable_till: enableTill,
+        enable_refunds: enableRefunds,
+        enable_reconciliation: enableReconciliation,
+      });
+      toast.success('M-Pesa Credentials Saved', 'Safaricom Daraja API settings updated for this supermarket.');
+    } catch (err: any) {
+      toast.error('Save Failed', err.message || 'Could not save M-Pesa configuration.');
+    } finally {
+      setSavingMpesa(false);
+    }
+  };
+
+  // Live preview update triggers
+  const handleBrandingChange = (key: string, val: any) => {
+    const draft = {
+      business_name: key === 'bName' ? val : bName,
+      short_name: key === 'sName' ? val : sName,
+      tagline: key === 'tagline' ? val : tagline,
+      logo_url: key === 'logoUrl' ? val : logoUrl,
+      primary_color: key === 'primaryColor' ? val : primaryColor,
+      secondary_color: key === 'secondaryColor' ? val : secondaryColor,
+      accent_color: key === 'accentColor' ? val : accentColor,
+      theme_mode: key === 'themeMode' ? val : themeMode,
+      receipt_footer: key === 'receiptFooter' ? val : receiptFooter,
+    };
+    previewBranding(draft);
+  };
+
+  const handleSaveBrandingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingBranding(true);
+    try {
+      await saveBranding({
+        business_name: bName,
+        short_name: sName,
+        tagline,
+        logo_url: logoUrl,
+        favicon_url: faviconUrl,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        accent_color: accentColor,
+        theme_mode: themeMode,
+        login_bg_url: loginBgUrl,
+        receipt_logo_url: receiptLogoUrl,
+        receipt_footer: receiptFooter,
+        invoice_header: invoiceHeader,
+        invoice_footer: invoiceFooter,
+        email: bEmail,
+        phone: bPhone,
+        website: bWebsite,
+        address: bAddress,
+        currency: bCurrency,
+        timezone: bTimezone,
+      });
+      toast.success('Branding Updated', 'Supermarket white label settings saved successfully.');
+    } catch (err: any) {
+      toast.error('Save Failed', err.message || 'Could not save branding settings.');
+    } finally {
+      setSavingBranding(false);
+    }
+  };
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Account &amp; System Settings</h1>
-        <p className="text-xs text-gray-500">Manage personal user profile credentials and supermarket business settings</p>
+    <div className="space-y-6 font-sans">
+      {/* Header */}
+      <div className="border-b border-slate-200 pb-4">
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Business Settings & Integrations</h1>
+        <p className="text-xs text-slate-500 mt-0.5 font-medium">Manage store profiles, white label branding, M-Pesa STK Push credentials, and WhatsApp Cloud API</p>
       </div>
-
-      {successMessage && (
-        <div className="bg-emerald-600 text-white px-4 py-3 rounded-xl text-xs font-extrabold flex items-center space-x-2 shadow-md">
-          <Sparkles className="w-4 h-4" />
-          <span>{successMessage}</span>
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="bg-red-600 text-white px-4 py-3 rounded-xl text-xs font-extrabold flex items-center space-x-2 shadow-md">
-          <AlertCircle className="w-4 h-4" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
-            activeTab === 'profile'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <UserCheck className="w-4 h-4" />
-          <span>Edit Personal Profile</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('store')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
-            activeTab === 'store'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Store className="w-4 h-4" />
-          <span>Store Business Profile</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('terminal')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
-            activeTab === 'terminal'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Lock className="w-4 h-4" />
-          <span>Terminal Security</span>
-        </button>
+      <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto custom-scrollbar">
+        {[
+          { id: 'profile', label: 'My Account Profile', icon: UserCheck },
+          { id: 'store', label: 'Store Information', icon: Store },
+          { id: 'branding', label: 'White Label & Branding', icon: Palette },
+          { id: 'mpesa', label: 'M-Pesa Integration', icon: Smartphone },
+          { id: 'whatsapp', label: 'WhatsApp Integration', icon: MessageSquare },
+          { id: 'terminal', label: 'Terminal Shift Lock', icon: Timer },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                isActive
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* ── Tab 1: Personal Profile ── */}
-      {activeTab === 'profile' && (
-        <form onSubmit={handleSaveProfile} className="space-y-6">
+      {/* Tab: WhatsApp Integration */}
+      {activeTab === 'whatsapp' && (
+        <form onSubmit={handleSaveWaSubmit} className="space-y-6 max-w-3xl font-sans">
           <Card>
             <CardHeader>
-              <CardTitle>Personal User Credentials</CardTitle>
-            </CardHeader>
-            <div className="space-y-5 p-1">
-              {/* Profile Photo Uploader */}
-              {user && (
-                <AvatarUploader
-                  currentUrl={photoUrl}
-                  userName={fullName || user.name}
-                  userId={user.id}
-                  onUploaded={(url) => {
-                    setPhotoUrl(url);
-                    // photo_url is NOT in the DB — persist to localStorage, then refresh context
-                    if (typeof window !== 'undefined') {
-                      if (url) {
-                        localStorage.setItem(`profile_photo_${user.id}`, url);
-                      } else {
-                        localStorage.removeItem(`profile_photo_${user.id}`);
-                      }
-                    }
-                    refreshProfile();
-                  }}
-                />
-              )}
-
-              <Input label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Email Address (Login ID)" value={user?.email || ''} disabled readOnly />
-                <Input label="Telephone Contact" value={userPhone} onChange={(e) => setUserPhone(e.target.value)} placeholder="+254 7..." />
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Update Security Password</CardTitle>
-            </CardHeader>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="New Security Password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Leave blank to keep current password"
-              />
-              <Input
-                label="Confirm New Password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-type new password"
-              />
-            </div>
-          </Card>
-
-          <Button type="submit" disabled={updateProfileMutation.isPending} className="bg-blue-600 hover:bg-blue-700 font-bold px-6 py-2.5">
-            <Save className="w-4 h-4 mr-2" />
-            {updateProfileMutation.isPending ? 'Updating Profile...' : 'Save Personal Profile'}
-          </Button>
-        </form>
-      )}
-
-      {/* ── Tab 2: Store Business Settings ── */}
-      {activeTab === 'store' && (
-        <form onSubmit={handleSaveStore} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Supermarket Store Profile</CardTitle>
+              <CardTitle className="text-sm font-extrabold flex items-center space-x-2 text-emerald-900">
+                <MessageSquare className="w-4.5 h-4.5 text-emerald-600" />
+                <span>Meta WhatsApp Business Cloud API Gateway</span>
+              </CardTitle>
             </CardHeader>
             <div className="space-y-4">
-              <Input label="Store Name (Receipt Header)" value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Business Telephone" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} required />
-                <Input label="Physical Address / Location" value={address} onChange={(e) => setAddress(e.target.value)} required />
+              <label className="flex items-center space-x-2.5 p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={waEnabled}
+                  onChange={(e) => setWaEnabled(e.target.checked)}
+                  disabled={!isOwner}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-xs font-bold text-emerald-900">Enable Automated WhatsApp Notifications</span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input isFloating label="WhatsApp Phone Number ID" value={phoneNumId} onChange={(e) => setPhoneNumId(e.target.value)} disabled={!isOwner} required />
+                <Input isFloating label="WhatsApp Business Account ID" value={bizAccountId} onChange={(e) => setBizAccountId(e.target.value)} disabled={!isOwner} required />
+              </div>
+
+              <Input
+                isFloating
+                label="Permanent Meta Graph Access Token"
+                type="password"
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                disabled={!isOwner}
+                required
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input isFloating label="Business Display Name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!isOwner} />
+                <Input isFloating label="Business Phone Number (2547...)" value={bizPhone} onChange={(e) => setBizPhone(e.target.value)} disabled={!isOwner} />
               </div>
             </div>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Currency &amp; Regional Settings</CardTitle>
-            </CardHeader>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Base Currency Symbol" value={currency} onChange={(e) => setCurrency(e.target.value)} required />
+          {isOwner && (
+            <div className="flex space-x-3 pt-2">
+              <Button type="button" onClick={handleTestWa} variant="outline" size="lg" isLoading={testingWa}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Test Meta API Connection
+              </Button>
+              <Button type="submit" variant="primary" size="lg" isLoading={savingWa} className="bg-emerald-600 hover:bg-emerald-700">
+                <Save className="w-4 h-4 mr-2" />
+                Save WhatsApp Configuration
+              </Button>
             </div>
-          </Card>
-
-          <Button type="submit" disabled={updateSettingsMutation.isPending || isLoading} className="bg-blue-600 hover:bg-blue-700 font-bold px-6 py-2.5">
-            <Save className="w-4 h-4 mr-2" />
-            {updateSettingsMutation.isPending ? 'Saving...' : 'Save Business Settings'}
-          </Button>
+          )}
         </form>
       )}
 
-      {/* ── Tab 3: Terminal Security ── */}
-      {activeTab === 'terminal' && (
-        <div className="space-y-6">
+      {/* Tab 4: M-Pesa Integration */}
+      {activeTab === 'mpesa' && (
+        <form onSubmit={handleSaveMpesaSubmit} className="space-y-6 max-w-3xl font-sans">
           <Card>
             <CardHeader>
-              <CardTitle>Auto-Lock Inactivity Timeout</CardTitle>
+              <CardTitle className="text-sm font-extrabold flex items-center space-x-2 text-emerald-900">
+                <Smartphone className="w-4.5 h-4.5 text-emerald-600" />
+                <span>Safaricom Daraja API Gateway Environment</span>
+              </CardTitle>
             </CardHeader>
-            <div className="p-4 space-y-4">
-              <p className="text-xs text-slate-500">
-                The terminal automatically locks after a period of inactivity. The user must re-enter their 4-digit PIN to resume.
-                The Supabase session remains active — only the terminal screen is locked.
-              </p>
+            <div className="space-y-4">
+              <Select
+                isFloating
+                label="M-Pesa API Environment"
+                value={mpesaEnv}
+                onChange={(e) => setMpesaEnv(e.target.value as any)}
+                disabled={!isOwner}
+                options={[
+                  { value: 'sandbox', label: 'Sandbox (Testing & Simulation)' },
+                  { value: 'production', label: 'Production (Live Daraja Gateway)' },
+                ]}
+              />
 
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-2">
-                  <Timer className="w-4 h-4 inline mr-1.5" />
-                  Inactivity Timeout Duration
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    { label: '5 Minutes', value: 5 },
-                    { label: '10 Minutes (Default)', value: 10 },
-                    { label: '15 Minutes', value: 15 },
-                    { label: '30 Minutes', value: 30 },
-                    { label: '60 Minutes', value: 60 },
-                    { label: 'Never (Disabled)', value: 0 },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => updateAutoLockTimeout(opt.value)}
-                      className={`px-3 py-2.5 rounded-xl text-xs font-extrabold border transition-all ${
-                        autoLockTimeoutMinutes === opt.value
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                <p className="text-[11px] text-slate-400 mt-3">
-                  Current setting:{' '}
-                  <strong className="text-slate-700">
-                    {autoLockTimeoutMinutes === 0
-                      ? 'Never (Auto-lock disabled)'
-                      : `${autoLockTimeoutMinutes} minutes of inactivity`}
-                  </strong>
-                </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Input isFloating label="Business Shortcode" value={shortcode} onChange={(e) => setShortcode(e.target.value)} disabled={!isOwner} required />
+                <Input isFloating label="PayBill Number" value={paybillNumber} onChange={(e) => setPaybillNumber(e.target.value)} disabled={!isOwner} />
+                <Input isFloating label="Buy Goods Till Number" value={tillNumber} onChange={(e) => setTillNumber(e.target.value)} disabled={!isOwner} />
               </div>
             </div>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>What Counts as Activity</CardTitle>
+              <CardTitle className="text-sm font-extrabold flex items-center space-x-2">
+                <Key className="w-4.5 h-4.5 text-blue-600" />
+                <span>API Consumer Keys & Passkey</span>
+              </CardTitle>
             </CardHeader>
-            <div className="p-4">
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-600">
-                {[
-                  'Mouse movement',
-                  'Mouse click or button press',
-                  'Touch screen interaction',
-                  'Keyboard key press',
-                  'Barcode scanner input',
-                  'Completing a sale',
-                  'Creating or editing data',
-                  'Scrolling the page',
-                ].map((item) => (
-                  <li key={item} className="flex items-center space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="space-y-4">
+              <Input
+                isFloating
+                label="Consumer Key"
+                type="password"
+                value={consumerKey}
+                onChange={(e) => setConsumerKey(e.target.value)}
+                disabled={!isOwner}
+                required
+              />
+              <Input
+                isFloating
+                label="Consumer Secret"
+                type="password"
+                value={consumerSecret}
+                onChange={(e) => setConsumerSecret(e.target.value)}
+                disabled={!isOwner}
+                required
+              />
+              <Input
+                isFloating
+                label="Online Passkey (LIPA NA M-PESA ONLINE)"
+                type="password"
+                value={passkey}
+                onChange={(e) => setPasskey(e.target.value)}
+                disabled={!isOwner}
+                required
+              />
             </div>
           </Card>
+
+          {isOwner && (
+            <div className="flex space-x-3 pt-2">
+              <Button type="button" onClick={handleTestMpesa} variant="outline" size="lg" isLoading={testingMpesa}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Test API Connection
+              </Button>
+              <Button type="submit" variant="primary" size="lg" isLoading={savingMpesa} className="bg-emerald-600 hover:bg-emerald-700">
+                <Save className="w-4 h-4 mr-2" />
+                Save M-Pesa Configuration
+              </Button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {/* Tab 3: White Label & Branding */}
+      {activeTab === 'branding' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <form onSubmit={handleSaveBrandingSubmit} className="lg:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-extrabold flex items-center space-x-2">
+                    <Store className="w-4 h-4 text-blue-600" />
+                    <span>Business Identity & Tagline</span>
+                  </CardTitle>
+                </CardHeader>
+                <div className="space-y-4">
+                  <Input
+                    isFloating
+                    label="Business / Supermarket Name"
+                    value={bName}
+                    onChange={(e) => {
+                      setBName(e.target.value);
+                      handleBrandingChange('bName', e.target.value);
+                    }}
+                    disabled={!isOwner}
+                    required
+                  />
+                  <Input
+                    isFloating
+                    label="Short Business Name (for Sidebar & Badge)"
+                    value={sName}
+                    onChange={(e) => {
+                      setSName(e.target.value);
+                      handleBrandingChange('sName', e.target.value);
+                    }}
+                    disabled={!isOwner}
+                  />
+                </div>
+              </Card>
+
+              {isOwner && (
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" variant="primary" size="lg" isLoading={savingBranding}>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Branding Changes
+                  </Button>
+                </div>
+              )}
+            </form>
+          </div>
         </div>
+      )}
+
+      {/* Tab 1: Profile */}
+      {activeTab === 'profile' && (
+        <Card className="p-6">
+          <CardHeader>
+            <CardTitle>Account Details</CardTitle>
+          </CardHeader>
+          <div className="space-y-4 max-w-md">
+            <Input isFloating label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            <Input isFloating label="Phone Number" value={userPhone} onChange={(e) => setUserPhone(e.target.value)} />
+            <Input isFloating label="Email Address" value={user?.email || ''} disabled className="bg-slate-50" />
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 2: Store */}
+      {activeTab === 'store' && (
+        <Card className="p-6">
+          <CardHeader>
+            <CardTitle>Store Information</CardTitle>
+          </CardHeader>
+          <div className="space-y-4 max-w-md">
+            <Input isFloating label="Store Name" value={storeName} onChange={(e) => setStoreName(e.target.value)} />
+            <Input isFloating label="Store Phone" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} />
+          </div>
+        </Card>
+      )}
+
+      {/* Tab 6: Terminal Lock */}
+      {activeTab === 'terminal' && (
+        <Card className="p-6">
+          <CardHeader>
+            <CardTitle>Terminal Shift Lock Timeout</CardTitle>
+          </CardHeader>
+          <div className="space-y-4 max-w-md">
+            <Input
+              isFloating
+              label="Auto-Lock Timeout (Minutes)"
+              type="number"
+              value={autoLockTimeoutMinutes}
+              onChange={(e) => updateAutoLockTimeout(parseInt(e.target.value) || 15)}
+            />
+          </div>
+        </Card>
       )}
     </div>
   );

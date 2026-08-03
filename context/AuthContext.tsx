@@ -104,6 +104,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [autoLockTimeoutMinutes, terminalUser, accountOwner]);
 
+  // ── Refresh-lock sentinel writer ─────────────────────────────────────────
+  // Writes 'terminal_page_alive' to sessionStorage just before the page
+  // unloads (refresh or close).  The boot script in layout.tsx reads and
+  // deletes this key on the *next* page load; if it was present the script
+  // clears all terminal session keys so AuthContext.refreshProfile cannot
+  // restore a stale terminal session after a hard refresh.
+  // Platform Owner is excluded — their session is not terminal-based.
+  useEffect(() => {
+    const isPlatformOwner = accountOwner?.role === 'platform_owner';
+    if (isPlatformOwner || typeof window === 'undefined') return;
+
+    const writeSentinel = () => {
+      try {
+        sessionStorage.setItem('terminal_page_alive', 'true');
+      } catch {}
+    };
+
+    window.addEventListener('pagehide', writeSentinel);
+    window.addEventListener('beforeunload', writeSentinel);
+
+    return () => {
+      window.removeEventListener('pagehide', writeSentinel);
+      window.removeEventListener('beforeunload', writeSentinel);
+    };
+  }, [accountOwner?.role]);
+
   const refreshProfile = async () => {
     try {
       const session = await authService.getSession();
@@ -116,17 +142,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setTerminalUser(null);
           } else {
             setAccountOwner(profile);
-            
-            // Restore active terminal session employee if available
+
             if (typeof window !== 'undefined') {
-              const isUnlocked = sessionStorage.getItem('terminal_unlocked') === 'true';
-              const storedEmpStr = sessionStorage.getItem('terminal_active_employee_data');
-              if (isUnlocked && storedEmpStr) {
-                try {
-                  const empData = JSON.parse(storedEmpStr);
-                  setTerminalUser(empData);
-                } catch {
-                  setTerminalUser(profile);
+              const isPlatformOwner = profile.role === 'platform_owner';
+
+              if (isPlatformOwner) {
+                // Platform Owner: no terminal PIN required — keep existing session as-is.
+              } else {
+                // Supermarket users: restore terminal session only if sessionStorage
+                // still carries a valid unlock token.  On a page refresh the boot
+                // script in layout.tsx will have already cleared those keys, so
+                // isUnlocked will be false and we redirect to the PIN screen.
+                const isUnlocked = sessionStorage.getItem('terminal_unlocked') === 'true';
+                const storedEmpStr = sessionStorage.getItem('terminal_active_employee_data');
+
+                if (isUnlocked && storedEmpStr) {
+                  // SPA navigation (not a refresh): restore the active terminal employee.
+                  try {
+                    const empData = JSON.parse(storedEmpStr);
+                    setTerminalUser(empData);
+                  } catch {
+                    setTerminalUser(profile);
+                  }
+                } else {
+                  // Terminal is locked (refresh cleared the sentinel) — redirect to PIN screen.
+                  // We do NOT call signOut(); the Supabase auth session remains intact.
+                  const currentPath = window.location.pathname;
+                  if (currentPath !== '/terminal-login') {
+                    window.location.replace('/terminal-login');
+                  }
                 }
               }
             }

@@ -107,12 +107,43 @@ export const productService = {
 
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
     const supabase = createClient();
-    const payload: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() };
-    
-    if (updates.cost_price !== undefined) payload.buying_price = updates.cost_price;
-    if (updates.stock_quantity !== undefined) payload.current_stock = updates.stock_quantity;
-    if (updates.reorder_level !== undefined) payload.minimum_stock = updates.reorder_level;
-    if (updates.vat_rate !== undefined) payload.tax_rate = updates.vat_rate;
+    const ctx = await authService.getCurrentUserContext();
+
+    // Extract values considering both standard DB column names and legacy aliases
+    const buying_price = updates.buying_price !== undefined ? updates.buying_price : updates.cost_price;
+    const current_stock = updates.current_stock !== undefined ? updates.current_stock : updates.stock_quantity;
+    const minimum_stock = updates.minimum_stock !== undefined ? updates.minimum_stock : updates.reorder_level;
+    const tax_rate = updates.tax_rate !== undefined ? updates.tax_rate : updates.vat_rate;
+
+    const payload: Record<string, unknown> = {};
+
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.barcode !== undefined) payload.barcode = updates.barcode;
+    if (updates.sku !== undefined) payload.sku = updates.sku || null;
+    if (updates.unit !== undefined) payload.unit = updates.unit;
+    if (buying_price !== undefined) payload.buying_price = buying_price;
+    if (updates.selling_price !== undefined) payload.selling_price = updates.selling_price;
+    if (updates.wholesale_price !== undefined) payload.wholesale_price = updates.wholesale_price;
+    if (updates.minimum_price !== undefined) payload.minimum_price = updates.minimum_price;
+    if (current_stock !== undefined) payload.current_stock = current_stock;
+    if (minimum_stock !== undefined) payload.minimum_stock = minimum_stock;
+    if (updates.maximum_stock !== undefined) payload.maximum_stock = updates.maximum_stock;
+    if (tax_rate !== undefined) payload.tax_rate = tax_rate;
+    if (updates.expiry_date !== undefined) payload.expiry_date = updates.expiry_date && updates.expiry_date.trim() !== '' ? updates.expiry_date : null;
+    if (updates.category_id !== undefined) payload.category_id = updates.category_id && updates.category_id.trim() !== '' ? updates.category_id : null;
+    if (updates.supplier_id !== undefined) payload.supplier_id = updates.supplier_id && updates.supplier_id.trim() !== '' ? updates.supplier_id : null;
+    if (updates.image_url !== undefined) payload.image_url = updates.image_url && updates.image_url.trim() !== '' ? updates.image_url : null;
+    if (updates.description !== undefined) payload.description = updates.description && updates.description.trim() !== '' ? updates.description : null;
+    if (updates.location !== undefined) payload.location = updates.location && updates.location.trim() !== '' ? updates.location : null;
+
+    // Preserve supermarket_id and branch_id for RLS compliance
+    if (updates.supermarket_id) payload.supermarket_id = updates.supermarket_id;
+    else if (ctx?.supermarketId) payload.supermarket_id = ctx.supermarketId;
+
+    if (updates.branch_id) payload.branch_id = updates.branch_id;
+    else if (ctx?.branchId) payload.branch_id = ctx.branchId;
+
+    payload.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from('products')
@@ -121,7 +152,10 @@ export const productService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Product Update Error:', error);
+      throw new Error(error.message || 'Failed to update product in Supabase');
+    }
 
     return {
       ...data,
