@@ -6,6 +6,8 @@ import { Provider as ReduxProvider } from 'react-redux';
 import { store } from '@/store';
 import { AuthProvider } from '@/context/AuthContext';
 import { TenantProvider } from '@/context/TenantContext';
+import { BrandingProvider } from '@/context/BrandingContext';
+import { ToastProvider } from '@/components/ui/toast';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -24,7 +26,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ReduxProvider store={store}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <TenantProvider>{children}</TenantProvider>
+          <BrandingProvider>
+            <TenantProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </TenantProvider>
+          </BrandingProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ReduxProvider>
