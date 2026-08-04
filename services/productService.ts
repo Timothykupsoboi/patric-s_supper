@@ -58,6 +58,7 @@ export const productService = {
     const supabase = createClient();
     const ctx = await authService.getCurrentUserContext();
 
+    // Payload mapped strictly to products table schema in database migration
     const payload: Record<string, unknown> = {
       name: product.name,
       sku: product.sku || `SKU-${Date.now().toString().slice(-6)}`,
@@ -72,9 +73,6 @@ export const productService = {
       branch_id: product.branch_id || ctx?.branchId,
     };
 
-    if (product.category_id && product.category_id.trim() !== '') {
-      payload.category_id = product.category_id;
-    }
     if (product.supplier_id && product.supplier_id.trim() !== '') {
       payload.supplier_id = product.supplier_id;
     }
@@ -83,6 +81,12 @@ export const productService = {
     }
     if (product.image_url && product.image_url.trim() !== '') {
       payload.image_url = product.image_url;
+    }
+    if (product.description && product.description.trim() !== '') {
+      payload.description = product.description;
+    }
+    if (product.location && product.location.trim() !== '') {
+      payload.location = product.location;
     }
 
     const { data, error } = await supabase
@@ -102,6 +106,7 @@ export const productService = {
       stock_quantity: data.current_stock,
       reorder_level: data.minimum_stock,
       vat_rate: data.tax_rate,
+      category_id: product.category_id,
     };
   },
 
@@ -130,7 +135,6 @@ export const productService = {
     if (updates.maximum_stock !== undefined) payload.maximum_stock = updates.maximum_stock;
     if (tax_rate !== undefined) payload.tax_rate = tax_rate;
     if (updates.expiry_date !== undefined) payload.expiry_date = updates.expiry_date && updates.expiry_date.trim() !== '' ? updates.expiry_date : null;
-    if (updates.category_id !== undefined) payload.category_id = updates.category_id && updates.category_id.trim() !== '' ? updates.category_id : null;
     if (updates.supplier_id !== undefined) payload.supplier_id = updates.supplier_id && updates.supplier_id.trim() !== '' ? updates.supplier_id : null;
     if (updates.image_url !== undefined) payload.image_url = updates.image_url && updates.image_url.trim() !== '' ? updates.image_url : null;
     if (updates.description !== undefined) payload.description = updates.description && updates.description.trim() !== '' ? updates.description : null;
@@ -163,6 +167,7 @@ export const productService = {
       stock_quantity: data.current_stock,
       reorder_level: data.minimum_stock,
       vat_rate: data.tax_rate,
+      category_id: updates.category_id,
     };
   },
 

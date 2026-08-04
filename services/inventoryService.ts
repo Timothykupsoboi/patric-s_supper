@@ -41,7 +41,7 @@ export const inventoryService = {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('products')
-      .select('*, category:categories(*)')
+      .select('*')
       .eq('deleted', false)
       .order('current_stock', { ascending: true });
 
@@ -65,7 +65,7 @@ export const inventoryService = {
 
     let query = supabase
       .from('products')
-      .select('*, category:categories(*)')
+      .select('*')
       .not('expiry_date', 'is', null)
       .lte('expiry_date', thresholdDate.toISOString().split('T')[0])
       .eq('deleted', false)
@@ -101,16 +101,7 @@ export const inventoryService = {
 
     const { data, error } = await query;
     if (error) throw error;
-
-    return (data || []).map((tx: any) => ({
-      ...tx,
-      reason: tx.notes,
-      product: tx.product ? {
-        ...tx.product,
-        cost_price: tx.product.buying_price,
-        stock_quantity: tx.product.current_stock,
-      } : undefined,
-    }));
+    return data || [];
   },
 
   async getPurchaseOrders(): Promise<PurchaseOrder[]> {
@@ -128,45 +119,60 @@ export const inventoryService = {
 
     const { data, error } = await query;
     if (error) throw error;
-
-    return (data || []).map((p: any) => ({
-      ...p,
-      order_number: `PO-${p.id.slice(0, 8)}`,
-    }));
+    return data || [];
   },
 
-  async createPurchaseOrder(po: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
+  async createPurchaseOrder(
+    po: Partial<PurchaseOrder>,
+    items: { product_id: string; quantity: number; cost_price: number }[] = []
+  ): Promise<PurchaseOrder> {
     const supabase = createClient();
     const ctx = await authService.getCurrentUserContext();
-    const { data, error } = await supabase
+    const rawPo = po as any;
+
+    const poPayload = {
+      po_number: rawPo.po_number || `PO-${Date.now().toString().slice(-6)}`,
+      supplier_id: po.supplier_id,
+      status: po.status || 'draft',
+      total_amount: po.total_amount || 0,
+      notes: rawPo.notes || null,
+      order_date: rawPo.order_date || new Date().toISOString().split('T')[0],
+      expected_delivery_date: rawPo.expected_delivery_date || null,
+      supermarket_id: po.supermarket_id || ctx?.supermarketId,
+      branch_id: po.branch_id || ctx?.branchId,
+    };
+
+    const { data: newPo, error: poErr } = await supabase
       .from('purchases')
-      .insert([
-        {
-          supermarket_id: po.supermarket_id || ctx?.supermarketId,
-          branch_id: po.branch_id || ctx?.branchId,
-          supplier_id: po.supplier_id,
-          total_amount: po.total_amount || 0,
-          status: 'ordered',
-        },
-      ])
+      .insert([poPayload])
       .select()
       .single();
 
-    if (error) throw error;
+    if (poErr) throw poErr;
 
-    return {
-      ...data,
-      order_number: `PO-${data.id.slice(0, 8)}`,
-    };
+    if (items && items.length > 0) {
+      const itemsPayload = items.map((item) => ({
+        purchase_id: newPo.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        cost_price: item.cost_price,
+        supermarket_id: newPo.supermarket_id,
+        branch_id: newPo.branch_id,
+      }));
+
+      const { error: itemsErr } = await supabase.from('purchase_items').insert(itemsPayload);
+      if (itemsErr) throw itemsErr;
+    }
+
+    return newPo;
   },
 
-  async updatePOStatus(poId: string, status: 'ordered' | 'received' | 'returned'): Promise<void> {
+  async updatePOStatus(id: string, status: string): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase
       .from('purchases')
       .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', poId);
-
+      .eq('id', id);
     if (error) throw error;
   },
 };
